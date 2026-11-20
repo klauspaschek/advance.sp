@@ -336,6 +336,8 @@ fn the_game_page_flips_auto_load_eject_save_turbo_and_rewind_and_saves_each() {
     assert!(!a.turbo());
     press(&mut a, Btn::Down);
     press(&mut a, Btn::Down);
+    // past Controller layout, greyed out without a controller
+    press(&mut a, Btn::Down);
     assert_eq!(a.quick_menu(), Some(QuickRow::AutoLoad));
     press(&mut a, Btn::Right);
     assert_eq!(card(&d), (false, true, false, false));
@@ -1056,7 +1058,7 @@ fn no_row_in_hand_runs_its_arrows_into_its_label() {
             }
             open_at(&mut a, row);
             let out = frame(&a);
-            let [lx, _, lw, _] = placed(&out, if row==QuickRow::AutomaticTime {1000+row.index()}else{1100+row.index()}).expect("selected or disabled label");
+            let [lx, _, lw, _] = placed(&out, if matches!(row, QuickRow::AutomaticTime | QuickRow::PadLayout) {1000+row.index()}else{1100+row.index()}).expect("selected or disabled label");
             let label_ends = lx + lw - MENU_PAD as f32;
             if let Some([cx, ..]) = placed(&out, 300) {
                 assert!(
@@ -1670,6 +1672,7 @@ fn general_selection_stays_live_during_about_exit_and_rapid_navigation() {
     press(&mut a, Btn::B);
     press(&mut a, Btn::Up);
     press(&mut a, Btn::Up);
+    press(&mut a, Btn::Up);
     a.update(0.0);
     assert_eq!(a.quick_menu(), Some(QuickRow::DateTime));
     let returning = frame(&a);
@@ -1682,6 +1685,7 @@ fn general_selection_stays_live_during_about_exit_and_rapid_navigation() {
     assert_eq!(clock_surface, returning_surface, "opening another page snapped the returning surface");
     press(&mut a, Btn::B);
     assert_eq!(a.quick_menu(), Some(QuickRow::DateTime));
+    press(&mut a, Btn::Down);
     press(&mut a, Btn::Down);
     press(&mut a, Btn::Down);
     press(&mut a, Btn::A);

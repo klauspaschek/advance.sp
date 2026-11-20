@@ -1117,6 +1117,11 @@ impl Frontend {
         self.session.pad_action(action);
     }
 
+    /// Whether a controller is connected and whether it pressed last.
+    pub fn set_controllers(&mut self, connected: bool, pressed_last: bool) {
+        self.session.app_mut().set_controllers(connected, pressed_last);
+    }
+
     /// A controller's extra button seen by the button checker.
     pub fn test_extra(&mut self, name: &str, down: bool) {
         self.session.app_mut().test_extra(name, down);

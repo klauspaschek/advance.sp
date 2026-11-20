@@ -109,6 +109,7 @@ pub fn run() {
         input.steer_with_stick(frontend.app().left_stick_dpad());
         input.pad_faces_by_position(frontend.app().pad_faces_by_position());
         input.set_testing(frontend.app().testing_buttons());
+        frontend.set_controllers(!input.gamepads().is_empty(), input.pad_pressed_last());
         frontend.advance(&mut input);
         for (name, down) in input.take_tested() {
             frontend.test_extra(name, down);

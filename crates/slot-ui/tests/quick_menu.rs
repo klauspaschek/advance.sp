@@ -86,7 +86,7 @@ fn the_rows_run_in_the_order_the_user_chose() {
     );
     assert_eq!(
         QuickRow::GENERAL.map(QuickRow::label),
-        ["Device code", "Updates", "Automatic time", "Time zone", "Clock format", "Date & Time", "Parental controls", "About"]
+        ["Device code", "Updates", "Automatic time", "Time zone", "Clock format", "Date & Time", "Parental controls", "Test buttons", "About"]
     );
     assert_eq!(
         QuickRow::CONTROL_PAGES.map(QuickRow::label),
@@ -126,6 +126,7 @@ fn the_rows_run_in_the_order_the_user_chose() {
             "Turbo Buttons",
             "Rumble",
             "Left Stick as D-Pad",
+            "Controller layout",
             "Load State on Insert",
             "Save State on Eject"
         ]
@@ -170,7 +171,7 @@ fn the_rows_run_in_the_order_the_user_chose() {
             QuickRow::DisplaySchedule,
             QuickRow::Wifi,
             QuickRow::Achievements,
-            QuickRow::SecurityPin, QuickRow::Updates, QuickRow::TimeZone, QuickRow::CartStudio, QuickRow::PlayAchievements, QuickRow::Radio
+            QuickRow::SecurityPin, QuickRow::Updates, QuickRow::TimeZone, QuickRow::CartStudio, QuickRow::PlayAchievements, QuickRow::Radio, QuickRow::ButtonTest
         ]
     );
     for page in [
@@ -261,7 +262,7 @@ fn the_values_read_as_the_menu_prints_them() {
             "Neutral", "Warm 11%", "Warm 22%", "Warm 33%", "Warm 44%",
             "Warm 55%", "Warm 66%", "Warm 77%", "Warm 88%", "Warm 100%",
             "12-hour", "24-hour", "Classic", "Wheel",
-            "Actual", "Stretch", "Fit", "Integer", "Mix",
+            "Actual", "Stretch", "Fit", "Integer", "Mix", "Nintendo", "Xbox",
         ]
     );
     assert_eq!(QuickValue::flag(true), QuickValue::On);

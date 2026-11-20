@@ -107,15 +107,6 @@ pub enum Page {
     Test,
 }
 
-/// The button checker's rows: a label and the buttons it shows.
-const TEST_GROUPS: [(&str, &[&str]); 5] = [
-    ("D-pad", &["Up", "Down", "Left", "Right"]),
-    ("Face buttons", &["A", "B", "X", "Y"]),
-    ("Shoulders", &["L1", "R1", "L2", "R2"]),
-    ("System", &["Select", "Start", "Menu", "Vol+", "Vol-"]),
-    ("Controller", &["Share", "L3", "R3", "RS left", "RS right", "RS up", "RS down"]),
-];
-
 /// How long B must be held to leave the button checker: a tap of B is tested like any other.
 pub const TEST_LEAVE_MS: u64 = 1000;
 
@@ -151,7 +142,11 @@ fn extra_name(name: &str) -> &'static str {
         "R←" => "RS left",
         "R→" => "RS right",
         "R↑" => "RS up",
-        _ => "RS down",
+        "R↓" => "RS down",
+        "L←" => "LS left",
+        "L→" => "LS right",
+        "L↑" => "LS up",
+        _ => "LS down",
     }
 }
 
@@ -172,7 +167,7 @@ pub fn pad_faces_by_position(root: &std::path::Path) -> bool {
         .is_ok_and(|text| text.lines().any(|l| l.trim() == "faces=labels"))
 }
 
-fn save_pad_faces(root: &std::path::Path, by_position: bool) -> std::io::Result<()> {
+pub fn save_pad_faces(root: &std::path::Path, by_position: bool) -> std::io::Result<()> {
     let path = root.join(PAD_FACES_FILE);
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
@@ -189,8 +184,10 @@ pub struct Manager {
     pairing_pad: Option<String>,
     test_held: Vec<&'static str>,
     test_b_since: Option<u64>,
-    /// The checker's group pressed last: the focus bar follows it.
-    test_focus: usize,
+    /// The checker draws the Xbox controller: one is connected and was pressed last.
+    pub test_controller: bool,
+    /// The checker was opened on its own (General → Test buttons) and has been left.
+    pub closed: bool,
     pub page: Page,
     stack: Vec<Page>,
     pub devices: Vec<Headphones>,
@@ -247,7 +244,8 @@ impl Manager {
             pairing_pad: None,
             test_held: Vec::new(),
             test_b_since: None,
-            test_focus: 0,
+            test_controller: false,
+            closed: false,
             root,
             page: Page::Home,
             stack: Vec::new(),
@@ -272,6 +270,14 @@ impl Manager {
             manager.ask("list", None);
         }
         manager
+    }
+
+    /// The button checker on its own (General → Test buttons): leaving it closes it.
+    pub fn button_test(root: PathBuf) -> Self {
+        let mut menu = Self::new(root, false);
+        menu.view = View::Bluetooth;
+        menu.page = Page::Test;
+        menu
     }
 
     /// The Bluetooth tile's manager.
@@ -467,8 +473,6 @@ impl Manager {
     fn local_row(&self) -> usize { 1 }
     fn device_start(&self) -> usize { if self.sound() { self.local_row() + 1 } else { 1 } }
     fn pair_row(&self) -> usize { self.device_start() + self.device_indices().len() + if self.sound() { self.usb_devices.len() } else { 0 } }
-    fn faces_row(&self) -> usize { self.pair_row() + 1 }
-    fn test_row(&self) -> usize { self.faces_row() + 1 }
     fn disconnect_row(&self) -> usize { self.pair_row() }
     fn pause_row(&self) -> usize { self.disconnect_row() + 1 }
     fn carousel_row(&self) -> usize { self.pause_row() + 1 }
@@ -560,28 +564,25 @@ impl Manager {
         self.page == Page::Test
     }
 
+    /// The checker's state as one row, for the face: which drawing, which layout, what is held.
     fn test_rows(&self) -> Vec<String> {
-        TEST_GROUPS
-            .iter()
-            .map(|(label, names)| {
-                let held: Vec<&str> = names.iter().copied().filter(|n| self.test_held.contains(n)).collect();
-                format!("TEST {label}|{}", if held.is_empty() { "–".to_owned() } else { held.join(" ") })
-            })
-            .collect()
+        vec![format!(
+            "TESTVIEW {} {} {}",
+            u8::from(self.test_controller),
+            u8::from(self.pad_by_position),
+            self.test_held.join(",")
+        )]
+    }
+
+    /// The names held in the checker now.
+    pub fn test_held(&self) -> &[&'static str] {
+        &self.test_held
     }
 
     fn hold(&mut self, name: &'static str) {
         if !self.test_held.contains(&name) { self.test_held.push(name); }
-        if let Some(group) = TEST_GROUPS.iter().position(|(_, names)| names.contains(&name)) {
-            self.test_focus = group;
-        }
     }
 
-    fn test_row_held(&self, row: usize) -> bool {
-        TEST_GROUPS
-            .get(row)
-            .is_some_and(|(_, names)| names.iter().any(|n| self.test_held.contains(n)))
-    }
 
     /// A button pressed or let go while the checker is open, as the hardware sent it.
     pub fn test_input(&mut self, event: RawEvent, now: u64) {
@@ -609,13 +610,23 @@ impl Manager {
         if self.testing() && self.test_b_since.is_some_and(|at| now.saturating_sub(at) >= TEST_LEAVE_MS) {
             self.test_held.clear();
             self.test_b_since = None;
-            self.page = self.stack.pop().unwrap_or(Page::Home);
-            self.selected = self.test_row();
+            match self.stack.pop() {
+                Some(page) => self.page = page,
+                None => self.closed = true,
+            }
         }
     }
 
     fn bluetooth_rows(&self) -> Vec<String> {
-        let kind = |d: &Headphones| if d.gamepad() { "PAD_DEVICE" } else { "DEVICE" };
+        let kind = |d: &Headphones| {
+            if d.gamepad() {
+                "PAD_DEVICE"
+            } else if d.kind.starts_with("audio-") {
+                "AUDIO_DEVICE"
+            } else {
+                "DEVICE"
+            }
+        };
         match self.page {
             Page::Home => {
                 let mut rows = vec![format!(
@@ -627,11 +638,6 @@ impl Manager {
                     format!("{}{} {}", if d.connected { "ACTIVE " } else { "" }, kind(d), d.name)
                 }));
                 rows.push("Pair new device".into());
-                rows.push(format!(
-                    "PAD_FACES {}",
-                    if self.pad_by_position { "Nintendo" } else { "Xbox" }
-                ));
-                rows.push("Test buttons".into());
                 rows
             }
             Page::Test => self.test_rows(),
@@ -657,14 +663,6 @@ impl Manager {
         }
     }
 
-    fn toggle_pad_faces(&mut self) {
-        let value = !self.pad_by_position;
-        match save_pad_faces(&self.root, value) {
-            Ok(()) => { self.pad_by_position = value; self.status.clear(); }
-            Err(_) => self.status = "Error: Could not save controller setting".into(),
-        }
-    }
-
     fn bluetooth_input(&mut self, action: Action) {
         let count = self.rows().len();
         let device = self
@@ -678,18 +676,9 @@ impl Manager {
             Action::GbaDown(Btn::A | Btn::Left | Btn::Right) if home && self.selected == 0 => {
                 self.toggle_bluetooth();
             }
-            Action::GbaDown(Btn::A | Btn::Left | Btn::Right) if home && self.selected == self.faces_row() => {
-                self.toggle_pad_faces();
-            }
             Action::GbaDown(Btn::A | Btn::Right) if home && self.selected == self.pair_row() => {
                 self.open(Page::Pair);
                 if !bluetooth_enabled(&self.root) { self.ask("on", None); }
-            }
-            Action::GbaDown(Btn::A | Btn::Right) if home && self.selected == self.test_row() => {
-                self.open(Page::Test);
-                self.test_held.clear();
-                self.test_b_since = None;
-                self.test_focus = 0;
             }
             _ if self.page == Page::Test => {}
             Action::GbaDown(Btn::X) if self.bluetooth_available => self.ask("diagnose", None),
@@ -860,15 +849,19 @@ impl Manager {
     }
     pub fn scroll_info(&self) -> (usize,usize,usize,usize) {
         let total=self.rows().len();
-        if self.testing() {return (self.test_focus,total,0,total.min(slot_ui::QUICK_VISIBLE));}
+        if self.testing() {return (0,total,0,total);}
         let visible=total.min(slot_ui::QUICK_VISIBLE);
         (self.selected,total,self.selected.saturating_sub(visible/2).min(total.saturating_sub(visible)),visible)
     }
-    pub fn page_key(&self) -> u64 { 1000 + self.page.clone() as u64 + if self.sound() { 0 } else { 10 } }
+    pub fn page_key(&self) -> u64 {
+        // the checker is a drawing, not a list: a key with no focus bar of its own
+        if self.testing() { return 4900; }
+        1000 + self.page.clone() as u64 + if self.sound() { 0 } else { 10 }
+    }
     pub fn lines(&self) -> Vec<String> {
         let title = if self.sound() { "" } else if self.testing() { "Test buttons" } else { "Bluetooth" };
         let message = if self.testing() {
-            "Hold B to go back".to_owned()
+            String::new()
         } else if self.forget_confirmation.is_some() {
             "CONFIRM_FORGET".to_owned()
         } else if self.recovering.load(Ordering::Relaxed) {
@@ -899,7 +892,7 @@ impl Manager {
         for (i, row) in self.rows().iter().enumerate().skip(first).take(visible) {
             lines.push(format!(
                 "{}{}",
-                if self.testing() && self.test_row_held(i) || !self.testing() && i == self.selected {
+                if i == self.selected {
                     "SELECTED "
                 } else {
                     "ROW "
@@ -939,7 +932,7 @@ impl Manager {
         let device_rows = self.device_start()..self.device_start() + self.device_indices().len();
         match self.page {
             Page::Test => "",
-            Page::Home if self.selected == 0 || self.selected == self.faces_row() => "B Back · Change",
+            Page::Home if self.selected == 0 => "B Back · Change",
             Page::Home if device_rows.contains(&self.selected) => "B Back · A Connect · Y Forget",
             Page::Pair if self.selected > 0 => "B Back · A Connect",
             _ => "B Back · A Select",
@@ -1203,6 +1196,14 @@ pub fn screen_face_without_switches(lines: &[String], footer_ink: [u8;3], canvas
     render_face(&lines,footer_ink,canvas,false)
 }
 fn render_face(lines: &[String], footer_ink: [u8;3], canvas:slot_ui::Canvas, switches: bool) -> UndoFace {
+    if let Some(state) = lines.iter().find_map(|l| l.strip_prefix("ROW TESTVIEW ").or_else(|| l.strip_prefix("SELECTED TESTVIEW "))) {
+        let mut words = state.splitn(3, ' ');
+        let controller = words.next() == Some("1");
+        let nintendo = words.next() == Some("1");
+        let held: Vec<&str> = words.next().unwrap_or("").split(',').filter(|n| !n.is_empty()).collect();
+        let view = slot_ui::ButtonTestView { controller, nintendo, held: &held };
+        return slot_ui::button_test_face(&view, footer_ink, canvas);
+    }
     let screen_w=canvas.w.round() as u32;
     let rgba = vec![0u8; (screen_w * OUT_H * 4) as usize];
     let Some(font) = slot_ui::text::label_font() else {
@@ -1319,7 +1320,6 @@ fn render_face(lines: &[String], footer_ink: [u8;3], canvas:slot_ui::Canvas, swi
             .or_else(|| label.strip_prefix("PAUSE_DISCONNECT ").map(|v| ("Pause on disconnect", v)))
             .or_else(|| label.strip_prefix("BLUETOOTH ").map(|v| ("Bluetooth", v)))
             .or_else(|| label.strip_prefix("CAROUSEL_SOUNDS ").map(|v| ("Carousel sounds", v)))
-            .or_else(|| label.strip_prefix("PAD_FACES ").map(|v| ("Button layout", v)))
         {
             let name = slot_ui::quick_value_face(name, highlight);
             blit(&mut rgba, &name, slot_ui::QUICK_LABEL_X as u32 - slot_ui::MENU_PAD, top);
@@ -1363,10 +1363,12 @@ fn render_face(lines: &[String], footer_ink: [u8;3], canvas:slot_ui::Canvas, swi
         let wired = label.starts_with("WIRED_DEVICE ");
         let speaker = label.starts_with("SPEAKER_DEVICE ");
         let pad = label.starts_with("PAD_DEVICE ");
-        let device = usb || wired || speaker || pad || label.starts_with("DEVICE ");
+        let audio = label.starts_with("AUDIO_DEVICE ");
+        let device = usb || wired || speaker || pad || audio || label.starts_with("DEVICE ");
         let label = label
             .strip_prefix("DEVICE ")
             .or_else(|| label.strip_prefix("PAD_DEVICE "))
+            .or_else(|| label.strip_prefix("AUDIO_DEVICE "))
             .or_else(|| label.strip_prefix("USB_DEVICE "))
             .or_else(|| label.strip_prefix("WIRED_DEVICE "))
             .or_else(|| label.strip_prefix("SPEAKER_DEVICE "))
@@ -1390,7 +1392,7 @@ fn render_face(lines: &[String], footer_ink: [u8;3], canvas:slot_ui::Canvas, swi
                     slot_ui::Icon::Volume
                 } else if pad {
                     slot_ui::Icon::Gamepad
-                } else if usb || wired {
+                } else if usb || wired || audio {
                     slot_ui::Icon::Headphones
                 } else {
                     slot_ui::Icon::Bluetooth
@@ -1504,7 +1506,8 @@ mod menu_tests {
             pairing_pad: None,
             test_held: Vec::new(),
             test_b_since: None,
-            test_focus: 0,
+            test_controller: false,
+            closed: false,
             bluetooth_available: true,
             disconnect_volume: 0,
             current_volume:50,
@@ -1900,20 +1903,38 @@ mod menu_tests {
     }
 
     #[test]
-    fn the_checker_focus_follows_the_group_pressed_last() {
+    fn the_standalone_checker_closes_when_b_is_held() {
+        let mut m = Manager::button_test(PathBuf::new());
+        assert!(m.testing());
+        assert_eq!(m.page_key(), 4900, "no list focus bar over the drawing");
+        m.test_input(RawEvent::Down(Btn::A), 0);
+        m.test_extra("L↑", true);
+        assert!(m.lines().iter().any(|l| l.ends_with("TESTVIEW 0 1 A,LS up")), "{:?}", m.lines());
+        assert!(m.lines().last().unwrap().is_empty());
+        m.test_input(RawEvent::Down(Btn::B), 100);
+        m.test_tick(100 + TEST_LEAVE_MS - 1);
+        assert!(!m.closed);
+        m.test_tick(100 + TEST_LEAVE_MS);
+        assert!(m.closed);
+    }
+
+    #[test]
+    fn the_checker_saves_layout_and_drawing_choice_in_its_view() {
+        let mut m = Manager::button_test(PathBuf::new());
+        m.test_controller = true;
+        m.pad_by_position = false;
+        m.test_input(RawEvent::Down(Btn::Start), 0);
+        assert!(m.lines().iter().any(|l| l.ends_with("TESTVIEW 1 0 Start")));
+        let face = screen_face_on(&m.lines(), [255, 255, 255], slot_ui::Canvas::FRAMED);
+        assert!(face.rgba.chunks_exact(4).any(|p| p[3] > 0), "the drawing is empty");
+    }
+
+    #[test]
+    fn headphones_show_as_headphones_in_the_bluetooth_tile() {
         let mut m = menu();
         m.view = View::Bluetooth;
-        m.selected = m.test_row();
-        m.input(Action::GbaDown(Btn::A));
-        assert!(m.testing());
-        assert_eq!(m.scroll_info(), (0, 5, 0, 5));
-        m.test_input(RawEvent::Down(Btn::L2), 0);
-        assert_eq!(m.scroll_info().0, 2);
-        m.test_input(RawEvent::Up(Btn::L2), 10);
-        assert_eq!(m.scroll_info().0, 2, "the bar stays on the last group");
-        m.test_extra("Share", true);
-        assert_eq!(m.scroll_info().0, 4);
-        assert!(m.lines().last().unwrap().is_empty(), "no button legends while every button is tested");
+        m.devices[0].kind = "audio-headset".into();
+        assert_eq!(m.rows()[1], "AUDIO_DEVICE WF-C510");
     }
 
     #[test]
@@ -1936,8 +1957,6 @@ mod menu_tests {
                 "DEVICE WF-C510",
                 "ACTIVE PAD_DEVICE Xbox Wireless Controller",
                 "Pair new device",
-                "PAD_FACES Nintendo",
-                "Test buttons",
             ]
         );
         assert_eq!(m.lines()[0], "Bluetooth");
@@ -1960,24 +1979,6 @@ mod menu_tests {
         m.input(Action::GbaDown(Btn::A));
         assert_eq!(m.status, "Connecting...");
         assert!(m.pairing_pad.is_none());
-    }
-
-    #[test]
-    fn the_controller_face_option_is_saved() {
-        let root = tempfile::tempdir().unwrap();
-        let mut m = menu();
-        m.view = View::Bluetooth;
-        m.root = root.path().to_owned();
-        m.pad_by_position = pad_faces_by_position(root.path());
-        assert!(m.pad_by_position, "the Nintendo layout is the default");
-        m.selected = m.faces_row();
-        assert!(m.lines().last().unwrap().contains("Change"));
-        m.input(Action::GbaDown(Btn::Right));
-        assert!(!m.pad_by_position);
-        assert!(!pad_faces_by_position(root.path()));
-        assert_eq!(m.rows()[m.faces_row()], "PAD_FACES Xbox");
-        m.input(Action::GbaDown(Btn::A));
-        assert!(pad_faces_by_position(root.path()));
     }
 
     #[test]

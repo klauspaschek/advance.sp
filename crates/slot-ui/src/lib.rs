@@ -1,4 +1,6 @@
 mod art;
+mod button_test;
+pub use button_test::{button_test_face, ButtonTestView};
 pub use art::{cover, cover_label,cover_label_bytes};
 mod bitmaps;
 mod label_mask;

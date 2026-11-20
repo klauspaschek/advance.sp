@@ -353,6 +353,8 @@ pub struct App {
     pub bluetooth: Option<crate::bluetooth::Manager>,
     bluetooth_supported: bool,
     pad_faces_by_position: bool,
+    /// A Bluetooth (or USB) controller is connected now.
+    controllers: bool,
     pub(crate) kid_status_icon: Option<TexId>,
     pub ra_sync_indicator: Option<TexId>,
     pub wifi_connecting_indicator: Option<TexId>,
@@ -633,6 +635,7 @@ impl App {
             bluetooth: None,
             bluetooth_supported: false,
             pad_faces_by_position: true,
+            controllers: false,
             kid_status_icon: None,
             ra_sync_indicator: None,
             wifi_connecting_indicator: None,
@@ -1381,6 +1384,8 @@ impl App {
             | QuickRow::PlayBlueLight => self.quick_value(self.playing_row(row)),
             QuickRow::AutomaticTime=>Some(if self.network.as_ref().is_some_and(|m|m.automatic_time_enabled()){QuickValue::On}else{QuickValue::Off}),
             QuickRow::ClockFormat => Some(if self.state.clock_12h {QuickValue::Hour12}else{QuickValue::Hour24}),
+            // no value, and greyed out, until a controller is connected
+            QuickRow::PadLayout => self.controllers.then_some(if self.pad_faces_by_position {QuickValue::Nintendo}else{QuickValue::Xbox}),
             QuickRow::CarouselMotion => Some(if self.state.carousel_wheel {QuickValue::Wheel}else{QuickValue::Classic}),
             QuickRow::Brightness => Some(QuickValue::level(self.state.brightness)),
             QuickRow::BlueLight => Some(QuickValue::temperature(self.state.blue_light)),
@@ -1443,6 +1448,7 @@ impl App {
             }),
             QuickRow::Bluetooth
             | QuickRow::Radio
+            | QuickRow::ButtonTest
             | QuickRow::Kids
             | QuickRow::DateTime
             | QuickRow::About
@@ -2684,7 +2690,22 @@ impl App {
     }
 
     pub fn test_tick(&mut self, now: slot_input::Millis) {
-        if let Some(menu) = &mut self.bluetooth { menu.test_tick(now); }
+        if let Some(menu) = &mut self.bluetooth {
+            menu.test_tick(now);
+            if menu.closed {
+                self.bluetooth = None;
+            }
+        }
+    }
+
+    /// Whether a controller is connected, and whether it made the last press: the checker then
+    /// draws the controller instead of the handheld.
+    pub fn set_controllers(&mut self, connected: bool, pressed_last: bool) {
+        self.controllers = connected;
+        if let Some(menu) = self.bluetooth.as_mut().filter(|m| m.testing()) {
+            menu.test_controller = connected && pressed_last;
+            menu.pad_by_position = self.pad_faces_by_position;
+        }
     }
 
     /// Whether Bluetooth controllers' face buttons are read by position rather than label.
@@ -3423,7 +3444,7 @@ impl App {
             QuickRow::ExitGame => self.eject(),
             QuickRow::Screen => {self.in_game_menu=Some(QuickRow::PlayBrightness);},
             QuickRow::PlaySound => self.open_quick_row(QuickRow::Bluetooth),
-            QuickRow::Wifi|QuickRow::Achievements|QuickRow::PlayAchievements|QuickRow::Updates|QuickRow::SecurityPin|QuickRow::Bluetooth|QuickRow::Radio|QuickRow::Kids|QuickRow::DisplaySchedule|QuickRow::SleepNow|QuickRow::ShutDown => self.open_quick_row(row),
+            QuickRow::Wifi|QuickRow::Achievements|QuickRow::PlayAchievements|QuickRow::Updates|QuickRow::SecurityPin|QuickRow::Bluetooth|QuickRow::Radio|QuickRow::ButtonTest|QuickRow::Kids|QuickRow::DisplaySchedule|QuickRow::SleepNow|QuickRow::ShutDown => self.open_quick_row(row),
             QuickRow::DateTime|QuickRow::TimeZone|QuickRow::About => {
                 if row == QuickRow::DateTime && self.network.as_ref().is_some_and(|m| m.automatic_time_enabled()) {
                     self.open_quick_row(row);
@@ -3488,7 +3509,12 @@ impl App {
             }
             QuickRow::ShutDown => self.hold_power(),
             QuickRow::LidClose | QuickRow::SleepTimeout | QuickRow::AutomaticTime => {}
-            QuickRow::ClockFormat | QuickRow::CarouselMotion | QuickRow::ShowTitles | QuickRow::FavoriteSort => self.change_setting(row, true),
+            QuickRow::ClockFormat | QuickRow::CarouselMotion | QuickRow::ShowTitles | QuickRow::FavoriteSort | QuickRow::PadLayout => self.change_setting(row, true),
+            QuickRow::ButtonTest => {
+                if let Some(root) = &self.root {
+                    self.bluetooth = Some(crate::bluetooth::Manager::button_test(root.clone()));
+                }
+            }
             QuickRow::Bluetooth | QuickRow::Radio => {
                 if let Some(root) = &self.root {
                     let mut menu = if row == QuickRow::Radio {
@@ -3715,6 +3741,20 @@ impl App {
             self.persist();
             return;
         }
+        if row == QuickRow::PadLayout {
+            if !self.controllers {
+                return;
+            }
+            let value = !self.pad_faces_by_position;
+            if let Some(root) = &self.root {
+                if let Err(e) = crate::bluetooth::save_pad_faces(root, value) {
+                    eprintln!("slot: controller layout: {e}");
+                    return;
+                }
+            }
+            self.pad_faces_by_position = value;
+            return;
+        }
         if row == QuickRow::ClockFormat || row == QuickRow::CarouselMotion {
             if row == QuickRow::ClockFormat {self.state.clock_12h=!self.state.clock_12h;}else{self.state.carousel_wheel=!self.state.carousel_wheel;}
             self.persist();return;
@@ -3796,6 +3836,7 @@ impl App {
             QuickRow::ShellColour => s.shell_colour = s.shell_colour.resolved(s.appearance.light()).step(right),
             QuickRow::WallpaperTint => s.wallpaper_tint = s.wallpaper_tint.step(right),
             QuickRow::ClockFormat | QuickRow::CarouselMotion | QuickRow::ScreenGeneral
+            | QuickRow::PadLayout | QuickRow::ButtonTest
             | QuickRow::Brightness
             | QuickRow::BlueLight
             | QuickRow::PlayBrightness
@@ -5822,6 +5863,7 @@ impl App {
         frame.sliders=[Some(self.slider_motion.value(1,self.state.brightness as f32/9.0)),Some(self.slider_motion.value(2,self.state.blue_light as f32/9.0))];
         let mut disabled=Vec::new();
         if !self.network.as_ref().is_some_and(|m|m.wifi_connected()) {disabled.push(QuickRow::Updates);}
+        if !self.controllers {disabled.push(QuickRow::PadLayout);}
         if self.network.as_ref().is_some_and(|m|m.automatic_time_enabled()) {disabled.push(QuickRow::DateTime);}
         else if !self.network.as_ref().is_some_and(|m|m.wifi_connected()) {disabled.push(QuickRow::AutomaticTime);}
         QuickMenu {

@@ -127,6 +127,10 @@ pub enum QuickRow {
     PlayAchievements,
     /// The Bluetooth tile: the radio, every paired device and pairing.
     Radio,
+    /// General → Test buttons: the button checker.
+    ButtonTest,
+    /// Gameplay → Controller layout: a controller's face buttons on the Nintendo or Xbox layout.
+    PadLayout,
 }
 
 impl QuickRow {
@@ -136,7 +140,7 @@ impl QuickRow {
             | Self::LeftStick | Self::GbaColourCorrection | Self::GbColourCorrection
             | Self::GbcColourCorrection | Self::ColourCorrection | Self::Recents | Self::AutomaticTime)
     }
-    pub const ALL: [QuickRow; 115] = [
+    pub const ALL: [QuickRow; 117] = [
         QuickRow::FastForward,
         QuickRow::FastForwardSound,
         QuickRow::Screen,
@@ -252,6 +256,8 @@ impl QuickRow {
         QuickRow::CartStudio,
         QuickRow::PlayAchievements,
         QuickRow::Radio,
+        QuickRow::ButtonTest,
+        QuickRow::PadLayout,
     ];
 
 
@@ -274,7 +280,7 @@ impl QuickRow {
         QuickRow::ShutDown,
     ];
 
-    pub const GENERAL: [QuickRow; 8] = [
+    pub const GENERAL: [QuickRow; 9] = [
         QuickRow::SecurityPin,
         QuickRow::Updates,
         QuickRow::AutomaticTime,
@@ -282,6 +288,7 @@ impl QuickRow {
         QuickRow::ClockFormat,
         QuickRow::DateTime,
         QuickRow::Kids,
+        QuickRow::ButtonTest,
         QuickRow::About,
     ];
 
@@ -372,7 +379,7 @@ impl QuickRow {
         QuickRow::GbBezel,
     ];
 
-    pub const GAME: [QuickRow; 9] = [
+    pub const GAME: [QuickRow; 10] = [
         QuickRow::Achievements,
         QuickRow::FastForward,
         QuickRow::FastForwardSound,
@@ -380,6 +387,7 @@ impl QuickRow {
         QuickRow::Turbo,
         QuickRow::Rumble,
         QuickRow::LeftStick,
+        QuickRow::PadLayout,
         QuickRow::AutoLoad,
         QuickRow::EjectSave,
     ];
@@ -441,12 +449,13 @@ impl QuickRow {
             | QuickRow::Turbo
             | QuickRow::Rumble
             | QuickRow::LeftStick
+            | QuickRow::PadLayout
             | QuickRow::AutoLoad
             | QuickRow::EjectSave => &QuickRow::GAME,
             QuickRow::Wallpaper | QuickRow::WallpaperTint | QuickRow::ShellColour
             | QuickRow::Theme | QuickRow::ShowTitles
             | QuickRow::CarouselMotion | QuickRow::Recents | QuickRow::FavoriteSort => &QuickRow::SCREEN,
-            QuickRow::About | QuickRow::ClockFormat | QuickRow::DateTime | QuickRow::Kids => &QuickRow::GENERAL,
+            QuickRow::About | QuickRow::ClockFormat | QuickRow::DateTime | QuickRow::Kids | QuickRow::ButtonTest => &QuickRow::GENERAL,
             QuickRow::Reference | QuickRow::ControlsShelf | QuickRow::Shortcuts | QuickRow::ControlsInGame => {
                 &QuickRow::CONTROL_PAGES
             }
@@ -566,6 +575,8 @@ impl QuickRow {
             QuickRow::Power => "Power & lid",
             QuickRow::Kids => "Parental controls",
             QuickRow::Radio => "Bluetooth",
+            QuickRow::ButtonTest => "Test buttons",
+            QuickRow::PadLayout => "Controller layout",
             QuickRow::LidClose => "Lid Close",
             QuickRow::SleepTimeout => "Shut Down After",
             QuickRow::SleepNow => "Sleep Now",
@@ -683,6 +694,7 @@ impl QuickRow {
             QuickRow::Power
                 | QuickRow::Kids
                 | QuickRow::Radio
+                | QuickRow::ButtonTest
                 | QuickRow::SleepNow
                 | QuickRow::ShutDown
                 | QuickRow::DateTime
@@ -857,10 +869,12 @@ pub enum QuickValue {
     Fit,
     Integer,
     Mix,
+    Nintendo,
+    Xbox,
 }
 
 impl QuickValue {
-    pub const ALL: [QuickValue; 67] = [
+    pub const ALL: [QuickValue; 69] = [
         QuickValue::Speed1_5,
         QuickValue::Speed2,
         QuickValue::Speed3,
@@ -928,6 +942,8 @@ impl QuickValue {
         QuickValue::Fit,
         QuickValue::Integer,
         QuickValue::Mix,
+        QuickValue::Nintendo,
+        QuickValue::Xbox,
     ];
 
     pub const LEVELS: [QuickValue; 10] = [
@@ -1026,6 +1042,8 @@ impl QuickValue {
             QuickValue::Fit => "Fit",
             QuickValue::Integer => "Integer",
             QuickValue::Mix => "Mix",
+            QuickValue::Nintendo => "Nintendo",
+            QuickValue::Xbox => "Xbox",
 
         }
     }

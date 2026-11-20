@@ -3,7 +3,7 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -36,6 +36,7 @@ pub struct DeviceInput {
     pads: Arc<Mutex<Vec<String>>>,
     extras: Arc<Mutex<Vec<PadExtra>>>,
     arrived: Arc<AtomicBool>,
+    last_source: Arc<AtomicU8>,
     share_since: Option<Millis>,
     share_power: bool,
     actions: Vec<Action>,
@@ -67,6 +68,7 @@ impl DeviceInput {
             pads: Arc::new(Mutex::new(Vec::new())),
             extras: Arc::new(Mutex::new(Vec::new())),
             arrived: Arc::new(AtomicBool::new(false)),
+            last_source: Arc::new(AtomicU8::new(0)),
             trace,
         };
         nodes.open_new(false);
@@ -77,6 +79,7 @@ impl DeviceInput {
             pads: nodes.pads.clone(),
             extras: nodes.extras.clone(),
             arrived: nodes.arrived.clone(),
+            last_source: nodes.last_source.clone(),
             share_since: None,
             share_power: false,
             actions: Vec::new(),
@@ -109,6 +112,7 @@ struct Nodes {
     pads: Arc<Mutex<Vec<String>>>,
     extras: Arc<Mutex<Vec<PadExtra>>>,
     arrived: Arc<AtomicBool>,
+    last_source: Arc<AtomicU8>,
     trace: Option<Arc<Trace>>,
 }
 
@@ -147,6 +151,7 @@ impl Nodes {
                 steers: self.stick.clone(),
                 by_position: self.by_position.clone(),
                 extras: pad.then(|| self.extras.clone()),
+                last_source: self.last_source.clone(),
                 trace: self.trace.clone(),
             };
             let opened = self.opened.clone();
@@ -225,6 +230,8 @@ struct Reader {
     by_position: Arc<AtomicBool>,
     /// A gamepad's buttons the handheld does not have.
     extras: Option<Arc<Mutex<Vec<PadExtra>>>>,
+    /// Who pressed last: 1 the handheld, 2 a gamepad.
+    last_source: Arc<AtomicU8>,
     trace: Option<Arc<Trace>>,
 }
 
@@ -290,6 +297,10 @@ impl Reader {
                 if (ev.kind == EV_KEY && ev.value == 1) || (ev.kind == EV_ABS && ev.value != 0) {
                     crate::latency::read();
                 }
+                if ev.kind == EV_KEY && ev.value == 1 {
+                    let source = if self.extras.is_some() { 2 } else { 1 };
+                    self.last_source.store(source, Ordering::Relaxed);
+                }
                 if let Some(extras) = &self.extras {
                     if let Some(extra) = pad_extra(ev) {
                         lock(extras).push(extra);
@@ -297,9 +308,17 @@ impl Reader {
                     }
                     if ev.kind == EV_ABS {
                         if let Some(shortcuts) = axes.right_stick(ev) {
+                            if shortcuts.iter().any(|e| e.held().1) {
+                                self.last_source.store(2, Ordering::Relaxed);
+                            }
                             lock(extras).extend(shortcuts);
                             continue;
                         }
+                        let left = axes.left_stick(ev);
+                        if left.iter().any(|e| e.held().1) {
+                            self.last_source.store(2, Ordering::Relaxed);
+                        }
+                        lock(extras).extend(left);
                     }
                 }
                 match ev.kind {
@@ -392,6 +411,11 @@ impl DeviceInput {
         std::mem::take(&mut self.actions)
     }
 
+    /// Whether the last button pressed was a gamepad's rather than the handheld's.
+    pub fn pad_pressed_last(&self) -> bool {
+        self.last_source.load(Ordering::Relaxed) == 2
+    }
+
     /// Whether a gamepad connected since the last call (after startup).
     pub fn take_pad_arrival(&self) -> bool {
         self.arrived.swap(false, Ordering::Relaxed)
@@ -448,7 +472,8 @@ impl DeviceInput {
                 PadExtra::SaveState(false)
                 | PadExtra::LoadState(false)
                 | PadExtra::ShaderNext(false)
-                | PadExtra::ShaderPrev(false) => {}
+                | PadExtra::ShaderPrev(false)
+                | PadExtra::LeftStick(..) => {}
             }
         }
         if let Some(since) = self.share_since.filter(|_| !self.testing) {

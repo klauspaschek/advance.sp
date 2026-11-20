@@ -21,8 +21,10 @@
 ### Menu changes from slot.sp
 
 - **Bluetooth** takes the place of *Parental controls* on the main menu. It holds the Bluetooth switch, every paired device (headphones and controllers, each with its icon) and **Pair new device**.
+- **Gameplay → Controller layout** chooses Nintendo or Xbox face buttons for a controller; it is greyed out until one is connected.
+- **General → Test buttons** checks every button (see [below](#bluetooth-controllers)).
 - **Sound** keeps volume, the output choice (speaker, wired, Bluetooth or USB headphones) and the disconnect options. Headphones are paired in the Bluetooth tile.
-- **Parental controls** (kid mode) are unchanged and now live in **General**, above About.
+- **Parental controls** (kid mode) are unchanged and now live in **General**.
 
 ## Bluetooth controllers
 
@@ -34,7 +36,7 @@ The controller reconnects by itself whenever Bluetooth is on, and can join or le
 
 | Controller | On the RG SP |
 | :--- | :--- |
-| Face buttons | **Nintendo layout** by default: the right button is A and the top one X, as on the handheld. **Bluetooth → Button layout → Xbox** follows the printed letters instead. |
+| Face buttons | **Nintendo layout** by default: the right button is A and the top one X, as on the handheld. **Gameplay → Controller layout → Xbox** follows the printed letters instead. |
 | D-pad, left stick | D-pad |
 | LB / RB, LT / RT | L1 / R1, L2 / R2 |
 | View / Menu | Select / Start |
@@ -49,7 +51,7 @@ Turning the controller on while the RG SP is in light sleep wakes the handheld, 
 
 The handheld's own buttons keep working alongside the controller, and any remapping in **Device controls** applies to both.
 
-**Bluetooth → Test buttons** checks every button of the handheld and of a controller: each group lights up and names the buttons held, and nothing else happens while it is open (the power button and the lid still work). Hold <kbd>B</kbd> for a second to go back.
+**General → Test buttons** checks every button: a drawing of the RG SP, or of an Xbox controller once one is connected and pressed, lights up each button while it is held, with the sticks' directions and the names slot receives beneath. Nothing else happens while it is open (the power button and the lid still work). Hold <kbd>B</kbd> for a second to go back.
 
 <details>
 <summary><strong>Checking a new controller's buttons</strong></summary>
