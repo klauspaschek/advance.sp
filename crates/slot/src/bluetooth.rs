@@ -182,6 +182,11 @@ pub struct Manager {
     pub view: View,
     pub pad_by_position: bool,
     pairing_pad: Option<String>,
+    /// The last verb asked, so a result knows what it answers.
+    last_verb: &'static str,
+    /// When the device list was last read: it is read again every few seconds while the menu
+    /// is open, so devices that reconnect by themselves get their check mark.
+    refreshed_at: Option<std::time::Instant>,
     test_held: Vec<&'static str>,
     test_b_since: Option<u64>,
     /// The checker draws the Xbox controller: one is connected and was pressed last.
@@ -242,6 +247,8 @@ impl Manager {
             view: View::Sound,
             pad_by_position: pad_faces_by_position(&root),
             pairing_pad: None,
+            last_verb: "",
+            refreshed_at: None,
             test_held: Vec::new(),
             test_b_since: None,
             test_controller: false,
@@ -341,6 +348,7 @@ impl Manager {
         self.forget_confirmation = None;
         self.choosing_route = matches!(verb, "speaker" | "connect" | "off" | "usb" | "local");
         self.pairing_pad = (verb == "pad").then(|| address.clone()).flatten();
+        self.last_verb = verb;
         let root = self.root.clone();
         let (tx, rx) = mpsc::channel();
         self.pending = Some(rx);
@@ -399,8 +407,13 @@ impl Manager {
                     }
                 }
                 if let Some(output) = message.output {
+                    // Sound moves to the output chosen; the Bluetooth tile stays where it is,
+                    // unless headphones were just connected from its list
+                    let follow = self.sound() || self.last_verb == "connect";
                     if self.choosing_route && !message.status.starts_with("Error:") {
                         self.route_choice = Some(output.clone());
+                    }
+                    if follow && self.choosing_route && !message.status.starts_with("Error:") {
                         self.page = Page::Home;
                         self.stack.clear();
                         self.selected = self
@@ -440,6 +453,7 @@ impl Manager {
                 self.selected = self.selected.min(self.rows().len().saturating_sub(1));
                 self.pending = None;
                 self.cancel_path = None;
+                self.refreshed_at = Some(std::time::Instant::now());
             }
             Err(mpsc::TryRecvError::Disconnected) => {
                 self.status = "Error: Bluetooth worker stopped".into();
@@ -448,6 +462,20 @@ impl Manager {
             }
             Err(mpsc::TryRecvError::Empty) => {}
         }
+    }
+
+    /// Reads the device list again every few seconds while the menu is open and idle: a
+    /// controller or headphones that reconnect by themselves get their check mark.
+    pub fn refresh(&mut self) {
+        const EVERY: std::time::Duration = std::time::Duration::from_secs(3);
+        if !self.bluetooth_available || self.pending.is_some() || self.forget_confirmation.is_some() || self.testing() {
+            return;
+        }
+        if self.refreshed_at.is_some_and(|at| at.elapsed() < EVERY) {
+            return;
+        }
+        self.refreshed_at = Some(std::time::Instant::now());
+        self.ask("list", None);
     }
 
     pub fn observe_output(&mut self, address: Option<&str>, connected: bool) {
@@ -1504,6 +1532,8 @@ mod menu_tests {
             view: View::Sound,
             pad_by_position: true,
             pairing_pad: None,
+            last_verb: "",
+            refreshed_at: None,
             test_held: Vec::new(),
             test_b_since: None,
             test_controller: false,
@@ -1935,6 +1965,51 @@ mod menu_tests {
         m.view = View::Bluetooth;
         m.devices[0].kind = "audio-headset".into();
         assert_eq!(m.rows()[1], "AUDIO_DEVICE WF-C510");
+    }
+
+    fn answer(m: &mut Manager, verb: &'static str, output: &str) {
+        let (tx, rx) = mpsc::channel();
+        tx.send(ResultMessage { devices: Some(m.devices.clone()), status: String::new(), output: Some(output.into()) }).unwrap();
+        m.pending = Some(rx);
+        m.last_verb = verb;
+        m.choosing_route = matches!(verb, "speaker" | "connect" | "off" | "usb" | "local");
+        m.poll();
+    }
+
+    #[test]
+    fn turning_bluetooth_off_leaves_the_selection_where_it_was() {
+        let mut m = menu();
+        m.view = View::Bluetooth;
+        m.devices.push(pad());
+        m.selected = 0;
+        answer(&mut m, "off", "speaker");
+        assert_eq!(m.selected, 0, "the switch row stays selected");
+        m.view = View::Sound;
+        m.selected = 0;
+        answer(&mut m, "speaker", "speaker");
+        assert_eq!(m.selected, m.local_row(), "Sound still moves to the output chosen");
+    }
+
+    #[test]
+    fn the_list_is_read_again_every_few_seconds_while_open_and_idle() {
+        let mut m = menu();
+        m.view = View::Bluetooth;
+        m.refresh();
+        assert!(m.busy(), "first look");
+        assert!(m.status.is_empty(), "silent: no spinner, no message");
+        m.cancel_pending();
+        m.status.clear();
+        m.refreshed_at = Some(std::time::Instant::now());
+        m.refresh();
+        assert!(!m.busy(), "not again within a few seconds");
+        m.refreshed_at = Some(std::time::Instant::now() - std::time::Duration::from_secs(4));
+        m.forget_confirmation = Some(m.devices[0].address.clone());
+        m.refresh();
+        assert!(!m.busy(), "never while a forget waits for its second Y");
+        m.forget_confirmation = None;
+        m.refresh();
+        assert!(m.busy());
+        assert!(!m.show_progress());
     }
 
     #[test]

@@ -4777,6 +4777,7 @@ impl App {
         }
         if let Some(menu) = &mut self.bluetooth {
             menu.poll();
+            menu.refresh();
             self.disconnect_volume = menu.disconnect_volume;
                 self.pause_on_disconnect = menu.pause_on_disconnect;
         }

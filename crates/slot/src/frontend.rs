@@ -724,7 +724,8 @@ impl Frontend {
             self.session.app_mut().wifi_indicator=None;
             self.session.app_mut().hud_wifi_indicator=None;
         }
-        if self.session.app().network.as_ref().is_some_and(|m| m.achievements_busy()) {
+        // a sync can only move with Wi-Fi connected: offline, pending work is no activity to show
+        if self.session.app().network.as_ref().is_some_and(|m| m.achievements_busy() && m.wifi_connected()) {
             if self.ra_sync_icon.is_none() {
                 let f = slot_ui::achievement_badge_face(HUD_INK);
                 upload(compositor, &mut self.ra_sync_icon, UndoFace {rgba:f.rgba,w:f.w,h:f.h});

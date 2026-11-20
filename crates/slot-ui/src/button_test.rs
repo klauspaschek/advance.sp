@@ -228,7 +228,11 @@ pub fn button_test_face(view: &ButtonTestView, ink: [u8; 3], canvas: Canvas) -> 
 
     // the drawing fills the card between the title and the held buttons, keeping its shape
     let legend_y = h as f32 - crate::MOUTH_H - MENU_HINT_H as f32 - 12.0;
-    let (top, bottom) = (70.0, legend_y - 44.0);
+    // everything stays inside the settings card: the held buttons' line sits at one height,
+    // under the controller's grips or under the handheld, whose drawing gives up a little height
+    let card_bottom = crate::expressive::CARD_BOTTOM;
+    let top = 66.0;
+    let bottom = if view.controller { card_bottom - 8.0 } else { card_bottom - 62.0 };
     let scale = ((w as f32 - 120.0) / DRAWING_W).min((bottom - top) / DRAWING_H);
     let (dw, dh) = ((DRAWING_W * scale).round() as u32, (DRAWING_H * scale).round() as u32);
     let (ox, oy) = ((w - dw) / 2, top as u32);
@@ -251,7 +255,9 @@ pub fn button_test_face(view: &ButtonTestView, ink: [u8; 3], canvas: Canvas) -> 
     // what slot receives, by name
     let names: Vec<&str> = view.held.iter().copied().filter(|n| !n.starts_with("LS ") && !n.starts_with("RS ")).collect();
     if !names.is_empty() {
-        text(&mut rgba, w, h, &names.join("  "), w as f32 / 2.0, bottom + 22.0, 24.0, ink, crate::text::Role::Focus);
+        // the same height for both drawings, clear of the card's lower edge
+        let line_y = card_bottom - 30.0;
+        text(&mut rgba, w, h, &names.join("  "), w as f32 / 2.0, line_y, 22.0, ink, crate::text::Role::Focus);
     }
 
     // the footer: holding B leaves, every other press is only shown
