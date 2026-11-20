@@ -140,7 +140,7 @@ fn xbox_button(style: &Style, lit: bool, cx: f32, cy: f32, ink: [u8; 3]) -> Part
 
 fn xbox(style: &Style, held: &dyn Fn(&str) -> bool, nintendo: bool, ink: [u8; 3]) -> (String, Vec<Part>) {
     let body = format!(
-        r#"<path d="M150 62 Q300 44 450 62 Q544 74 570 172 Q588 262 520 266 Q480 268 440 228 L160 228 Q120 268 80 266 Q12 262 30 172 Q56 74 150 62 Z" fill="{}" stroke="{}" stroke-width="3"/>"#,
+        r#"<path d="M150 62 Q300 44 450 62 Q544 74 570 172 Q588 262 520 266 Q480 268 440 217 L160 217 Q120 268 80 266 Q12 262 30 172 Q56 74 150 62 Z" fill="{}" stroke="{}" stroke-width="3"/>"#,
         hex(ink, 0.06),
         hex(ink, 0.35)
     );
