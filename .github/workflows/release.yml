@@ -179,34 +179,28 @@ jobs:
           set -euo pipefail
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             tag="$GITHUB_REF_NAME"
-            title="slot.sp — $tag"
+            title="advance.sp — $tag"
           else
             date="$(date -u +%Y.%m.%d)"
             tag="build-${date}-${GITHUB_SHA:0:7}"
-            title="slot.sp — $date (${GITHUB_SHA:0:7})"
+            title="advance.sp — $date (${GITHUB_SHA:0:7})"
           fi
           cat > notes.md <<'NOTES'
           ## Choose your download
 
-          - **[slot.sp-System.zip](../../releases/latest/download/slot.sp-System.zip)** — update an existing slot installation. Extract onto the content card (SD2), replacing the `System` files. Your games, saves and configuration stay in their existing folders.
+          - **[slot.sp-System.zip](../../releases/latest/download/slot.sp-System.zip)** — update an existing slot.sp or advance.sp card. Extract onto the content card (SD2), replacing the `System` files. Your games, saves, wallpapers and configuration stay in their existing folders. The in-app updater installs this same file.
           - **[slot.sp-SD2.zip](../../releases/latest/download/slot.sp-SD2.zip)** — the full SD2 starter tree for a new setup. Extract its contents onto SD2 after following the [BaseOS setup guide](https://slot-cfw.fyi). This is not a bootable OS image. Use the System ZIP for routine updates.
           - **SHA256SUMS** — download checksums. **build-info.json** identifies the exact source commit and build.
 
           Back up your card and shut down the handheld before updating. No ROMs or BIOS files are included. Games must be unzipped.
 
-          ## The SP experience
+          ## advance.sp
 
-          Labels with detected rounded black scan backgrounds are cleaned automatically on device and cached. Transparent corners reveal the cartridge plastic, with corrected alpha resizing to prevent dark fringes. Original PNGs stay unchanged.
+          slot.sp for the RG SP, extended with Bluetooth game controllers (pairing, a Nintendo or Xbox face-button layout, screenshot, save/load state, rewind, fast-forward and shader shortcuts on the extra buttons, and waking from light sleep) and a Bluetooth tile for the radio, headphones and controllers. HDMI output is next. See the [README](https://github.com/jgraving/slot#readme) for details.
 
-          Four matching shell finishes, a rebuilt cartridge bay and EXT.1 port, larger cartridges, scrolling menus, saved day/night display presets, Bluetooth/USB audio controls, separate output volumes, and configurable sleep/shutdown behavior. See the [README](https://github.com/jgraving/slot#readme) for previews and setup.
+          Built and regression-tested on ARM64; slot, mGBA and gpSP are verified AArch64 binaries. Tested on an RG SP; other handhelds slot.sp supports are untested.
 
-          Built and regression-tested on ARM64; slot, mGBA and gpSP are verified AArch64 binaries. Device/accessory support varies. Bluetooth volume synchronization remains experimental, and physical link/suspend behavior needs device-specific testing.
-
-          The optional High Refresh setting changes display-driver timing and UI pacing. It does not establish that the panel displays 120 distinct frames per second. See the display guide for controls and details.
-
-          This build integrates upstream through v1.9.0: screenshot capture/gallery, save/load undo, periodic saves, safer core loading, SD repair improvements, boot-logo installation and mGBA save fixes. Run-ahead is removed to follow upstream's save-safety fix. Fork-specific shell, audio, night mode, and power preferences are retained.
-
-          mGBA (MPL-2.0) and gpSP (GPL-2.0) licenses, provenance, patches, and gpSP's source archive are bundled in `System/licenses`. See the repository for slot's GPL-3.0-or-later source and credits.
+          mGBA (MPL-2.0) and gpSP (GPL-2.0) licenses, provenance, patches, and gpSP's source archive are bundled in `System/licenses`. See the repository for the GPL-3.0-or-later source and credits to slot.sp, slot, Cartridge and BaseOS.
           NOTES
           sed -i "s|https://github.com/jgraving/slot#readme|https://github.com/$GITHUB_REPOSITORY#readme|g" notes.md
           # Bind the links to this release, so older release notes stay accurate.

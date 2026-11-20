@@ -37,3 +37,7 @@
 /site/zensical.build.toml
 /site/docs/assets/generated
 .samba-build/
+
+# Personal wallpapers stay on the card, never in the repository
+card/Wallpapers/*
+!card/Wallpapers/README.txt
