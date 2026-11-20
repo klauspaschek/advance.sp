@@ -234,6 +234,13 @@ impl Session {
             // Code and keyboard editors use literal buttons, never game shortcuts or
             // delayed modifier gestures. Apply each edge before the next event.
             let button = match ev { RawEvent::Down(b) | RawEvent::Up(b) => b };
+            // The button checker sees every button as it is, and none acts; power and the lid
+            // still sleep and wake the handheld.
+            if self.app.testing_buttons() && !matches!(button, Btn::Power | Btn::Lid) {
+                self.gestures.observe(ev);
+                self.app.test_button(ev, now);
+                continue;
+            }
             if self.app.literal_menu_buttons()
                 && !self.dozing()
                 && !matches!(button, Btn::Power | Btn::Lid | Btn::VolUp | Btn::VolDown)
@@ -277,6 +284,7 @@ impl Session {
         if self.app.capturing() || self.app.literal_menu_buttons() || self.dozing() {
             self.gestures.cancel_display_ramps();
         }
+        self.app.test_tick(now);
         actions.extend(self.gestures.tick(now));
         if !latched && self.app.in_game_menu().is_some() {
             actions.extend(self.gestures.drop_ff_latch());

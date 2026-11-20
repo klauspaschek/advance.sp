@@ -2668,6 +2668,25 @@ impl App {
         self.left_stick = present;
     }
 
+    /// Whether the button checker (Bluetooth → Test buttons) is open and awake.
+    pub fn testing_buttons(&self) -> bool {
+        self.bluetooth.as_ref().is_some_and(|m| m.testing()) && !matches!(self.phase, Phase::Doze { .. })
+    }
+
+    /// A button pressed or let go while the button checker is open.
+    pub fn test_button(&mut self, event: RawEvent, now: slot_input::Millis) {
+        if let Some(menu) = &mut self.bluetooth { menu.test_input(event, now); }
+    }
+
+    /// A controller's extra button pressed or let go while the button checker is open.
+    pub fn test_extra(&mut self, name: &str, down: bool) {
+        if let Some(menu) = self.bluetooth.as_mut().filter(|m| m.testing()) { menu.test_extra(name, down); }
+    }
+
+    pub fn test_tick(&mut self, now: slot_input::Millis) {
+        if let Some(menu) = &mut self.bluetooth { menu.test_tick(now); }
+    }
+
     /// Whether Bluetooth controllers' face buttons are read by position rather than label.
     pub fn pad_faces_by_position(&self) -> bool {
         self.pad_faces_by_position

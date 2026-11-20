@@ -112,9 +112,10 @@ fn share_and_the_stick_clicks_are_extras_not_buttons() {
     use slot::input::evdev::{pad_extra, PadExtra};
     assert_eq!(pad_extra(key(167, 1)), Some(PadExtra::Share(true)));
     assert_eq!(pad_extra(key(167, 0)), Some(PadExtra::Share(false)));
-    assert_eq!(pad_extra(key(0x13d, 1)), Some(PadExtra::SaveState));
-    assert_eq!(pad_extra(key(0x13e, 1)), Some(PadExtra::LoadState));
-    assert_eq!(pad_extra(key(0x13e, 0)), None, "acting on press only");
+    assert_eq!(pad_extra(key(0x13d, 1)), Some(PadExtra::SaveState(true)));
+    assert_eq!(pad_extra(key(0x13e, 1)), Some(PadExtra::LoadState(true)));
+    assert_eq!(pad_extra(key(0x13e, 0)), Some(PadExtra::LoadState(false)));
+    assert_eq!(pad_extra(key(0x13e, 2)), None, "autorepeat");
     assert_eq!(pad_extra(key(0x130, 1)), None);
     assert_eq!(pad_code_to_btn(167, FaceButtons::default()), None);
 }
@@ -317,9 +318,9 @@ fn the_right_stick_rewinds_fast_forwards_and_changes_the_shader() {
         Some(vec![PadExtra::FastForward(false), PadExtra::Rewind(true)])
     );
     assert_eq!(axes.right_stick(abs(ABS_Z, 32768)), Some(vec![PadExtra::Rewind(false)]));
-    assert_eq!(axes.right_stick(abs(ABS_RZ, 0)), Some(vec![PadExtra::ShaderNext]), "up");
-    assert_eq!(axes.right_stick(abs(ABS_RZ, 32768)), Some(vec![]));
-    assert_eq!(axes.right_stick(abs(ABS_RZ, 65535)), Some(vec![PadExtra::ShaderPrev]), "down");
+    assert_eq!(axes.right_stick(abs(ABS_RZ, 0)), Some(vec![PadExtra::ShaderNext(true)]), "up");
+    assert_eq!(axes.right_stick(abs(ABS_RZ, 32768)), Some(vec![PadExtra::ShaderNext(false)]));
+    assert_eq!(axes.right_stick(abs(ABS_RZ, 65535)), Some(vec![PadExtra::ShaderPrev(true)]), "down");
 }
 
 #[test]

@@ -293,18 +293,33 @@ pub enum PadExtra {
     /// Share pressed (true) or released (false): a tap takes a screenshot, a hold is the power
     /// button.
     Share(bool),
-    /// The left stick pressed in.
-    SaveState,
-    /// The right stick pressed in.
-    LoadState,
+    /// The left stick pressed in (saves a state) or let go.
+    SaveState(bool),
+    /// The right stick pressed in (loads a state) or let go.
+    LoadState(bool),
     /// The right stick held left (true) or let go (false).
     Rewind(bool),
     /// The right stick held right (true) or let go (false).
     FastForward(bool),
-    /// The right stick pushed up.
-    ShaderNext,
-    /// The right stick pushed down.
-    ShaderPrev,
+    /// The right stick pushed up (next shader) or let go.
+    ShaderNext(bool),
+    /// The right stick pushed down (previous shader) or let go.
+    ShaderPrev(bool),
+}
+
+impl PadExtra {
+    /// The control's name and whether it is now held, for the button checker.
+    pub fn held(self) -> (&'static str, bool) {
+        match self {
+            PadExtra::Share(on) => ("Share", on),
+            PadExtra::SaveState(on) => ("L3", on),
+            PadExtra::LoadState(on) => ("R3", on),
+            PadExtra::Rewind(on) => ("R←", on),
+            PadExtra::FastForward(on) => ("R→", on),
+            PadExtra::ShaderNext(on) => ("R↑", on),
+            PadExtra::ShaderPrev(on) => ("R↓", on),
+        }
+    }
 }
 
 pub fn pad_extra(ev: Ev) -> Option<PadExtra> {
@@ -314,8 +329,8 @@ pub fn pad_extra(ev: Ev) -> Option<PadExtra> {
     match (ev.code, ev.value) {
         (KEY_RECORD, 1) => Some(PadExtra::Share(true)),
         (KEY_RECORD, 0) => Some(PadExtra::Share(false)),
-        (BTN_THUMBL, 1) => Some(PadExtra::SaveState),
-        (BTN_THUMBR, 1) => Some(PadExtra::LoadState),
+        (BTN_THUMBL, 0 | 1) => Some(PadExtra::SaveState(ev.value == 1)),
+        (BTN_THUMBR, 0 | 1) => Some(PadExtra::LoadState(ev.value == 1)),
         _ => None,
     }
 }
@@ -450,9 +465,14 @@ impl PadAxes {
             }
         } else {
             // up is negative
+            match held {
+                -1 => out.push(PadExtra::ShaderNext(false)),
+                1 => out.push(PadExtra::ShaderPrev(false)),
+                _ => {}
+            }
             match now {
-                -1 => out.push(PadExtra::ShaderNext),
-                1 => out.push(PadExtra::ShaderPrev),
+                -1 => out.push(PadExtra::ShaderNext(true)),
+                1 => out.push(PadExtra::ShaderPrev(true)),
                 _ => {}
             }
         }

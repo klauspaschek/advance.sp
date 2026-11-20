@@ -49,6 +49,8 @@ Turning the controller on while the RG SP is in light sleep wakes the handheld, 
 
 The handheld's own buttons keep working alongside the controller, and any remapping in **Device controls** applies to both.
 
+**Bluetooth → Test buttons** checks every button of the handheld and of a controller: each group lights up and names the buttons held, and nothing else happens while it is open (the power button and the lid still work). Hold <kbd>B</kbd> for a second to go back.
+
 <details>
 <summary><strong>Checking a new controller's buttons</strong></summary>
 

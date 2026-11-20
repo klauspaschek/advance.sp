@@ -39,6 +39,8 @@ pub struct DeviceInput {
     share_since: Option<Millis>,
     share_power: bool,
     actions: Vec<Action>,
+    testing: bool,
+    tested: Vec<(&'static str, bool)>,
     hall: Option<PathBuf>,
     lid_shut: Option<bool>,
     next_lid_poll: Millis,
@@ -78,6 +80,8 @@ impl DeviceInput {
             share_since: None,
             share_power: false,
             actions: Vec::new(),
+            testing: false,
+            tested: Vec::new(),
             hall: find_hall(Path::new(PSY)),
             lid_shut: None,
             next_lid_poll: 0,
@@ -233,7 +237,11 @@ impl Reader {
             lock(&self.queue).extend(held.into_iter().map(RawEvent::Up));
         }
         if let Some(extras) = &self.extras {
-            lock(extras).extend([PadExtra::Share(false), PadExtra::Rewind(false), PadExtra::FastForward(false)]);
+            lock(extras).extend([
+                PadExtra::Share(false),
+                PadExtra::Rewind(false),
+                PadExtra::FastForward(false),
+            ]);
         }
     }
 
@@ -394,8 +402,27 @@ impl DeviceInput {
         lock(&self.pending).extend([RawEvent::Down(Btn::Power), RawEvent::Up(Btn::Power)]);
     }
 
+    /// While the button checker is open, a gamepad's extra buttons only report themselves:
+    /// no screenshot, state or power button.
+    pub fn set_testing(&mut self, on: bool) {
+        if on && !self.testing {
+            self.share_since = None;
+            self.share_power = false;
+        }
+        self.testing = on;
+    }
+
+    /// The extra buttons pressed or let go while the button checker is open.
+    pub fn take_tested(&mut self) -> Vec<(&'static str, bool)> {
+        std::mem::take(&mut self.tested)
+    }
+
     fn pad_extras(&mut self, now: Millis, out: &mut Vec<RawEvent>) {
         for extra in std::mem::take(&mut *lock(&self.extras)) {
+            if self.testing {
+                self.tested.push(extra.held());
+                continue;
+            }
             match extra {
                 PadExtra::Share(true) => {
                     if self.share_since.is_none() {
@@ -412,15 +439,19 @@ impl DeviceInput {
                         }
                     }
                 }
-                PadExtra::SaveState => self.actions.push(Action::SaveState),
-                PadExtra::LoadState => self.actions.push(Action::LoadState),
+                PadExtra::SaveState(true) => self.actions.push(Action::SaveState),
+                PadExtra::LoadState(true) => self.actions.push(Action::LoadState),
                 PadExtra::Rewind(on) => self.actions.push(if on { Action::RewindStart } else { Action::RewindStop }),
                 PadExtra::FastForward(on) => self.actions.push(if on { Action::FfStart } else { Action::FfStop }),
-                PadExtra::ShaderNext => self.actions.push(Action::ShaderNext),
-                PadExtra::ShaderPrev => self.actions.push(Action::ShaderPrev),
+                PadExtra::ShaderNext(true) => self.actions.push(Action::ShaderNext),
+                PadExtra::ShaderPrev(true) => self.actions.push(Action::ShaderPrev),
+                PadExtra::SaveState(false)
+                | PadExtra::LoadState(false)
+                | PadExtra::ShaderNext(false)
+                | PadExtra::ShaderPrev(false) => {}
             }
         }
-        if let Some(since) = self.share_since {
+        if let Some(since) = self.share_since.filter(|_| !self.testing) {
             if !self.share_power && now.saturating_sub(since) >= SHARE_POWER_MS {
                 self.share_power = true;
                 out.push(RawEvent::Down(Btn::Power));
@@ -512,5 +543,26 @@ mod tests {
         assert!(!input.take_pad_arrival(), "taken once");
         input.press_power();
         assert_eq!(input.poll(0), vec![RawEvent::Down(Btn::Power), RawEvent::Up(Btn::Power)]);
+    }
+}
+
+#[cfg(test)]
+mod checker_tests {
+    use super::*;
+
+    #[test]
+    fn while_testing_the_extras_only_report_themselves() {
+        let d = tempfile::tempdir().unwrap();
+        let mut input = DeviceInput::open_in(&d.path().join("dev"), &d.path().join("sys"), d.path(), false);
+        input.set_testing(true);
+        lock(&input.extras).extend([PadExtra::Share(true), PadExtra::SaveState(true)]);
+        assert!(input.poll(0).is_empty());
+        assert!(input.poll(5000).is_empty(), "a held Share is no power button while testing");
+        assert!(input.take_actions().is_empty());
+        assert_eq!(input.take_tested(), vec![("Share", true), ("L3", true)]);
+        input.set_testing(false);
+        lock(&input.extras).push(PadExtra::Share(false));
+        assert!(input.poll(5100).is_empty(), "the press began while testing: no screenshot");
+        assert!(input.take_actions().is_empty());
     }
 }

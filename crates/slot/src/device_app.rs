@@ -108,7 +108,11 @@ pub fn run() {
         }
         input.steer_with_stick(frontend.app().left_stick_dpad());
         input.pad_faces_by_position(frontend.app().pad_faces_by_position());
+        input.set_testing(frontend.app().testing_buttons());
         frontend.advance(&mut input);
+        for (name, down) in input.take_tested() {
+            frontend.test_extra(name, down);
+        }
         for action in input.take_actions() {
             frontend.pad_action(action);
         }

@@ -1117,6 +1117,11 @@ impl Frontend {
         self.session.pad_action(action);
     }
 
+    /// A controller's extra button seen by the button checker.
+    pub fn test_extra(&mut self, name: &str, down: bool) {
+        self.session.app_mut().test_extra(name, down);
+    }
+
     /// Whether the handheld is in light sleep.
     pub fn dozing(&self) -> bool {
         self.session.is_dozing()
