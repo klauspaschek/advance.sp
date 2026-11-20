@@ -51,7 +51,9 @@ case "$*" in
      case "$command" in
        default-agent) echo 'Default agent request successful';;
        'scan on') echo 'Discovery started';;
-       pair*) if [ "${MOCK_AUTH_PROMPT:-no}" = yes ]; then echo "[agent] ${MOCK_AUTH_TEXT:-Authorize pairing} (yes/no):"; elif [ "${MOCK_PAIR_FAIL:-no}" = yes ]; then echo 'Failed to pair: org.bluez.Error.AuthenticationFailed'; else touch "$SLOT_ROOT/paired"; echo 'Pairing successful'; fi;;
+       pair*) tries=$(cat "$SLOT_ROOT/pair-tries" 2>/dev/null || echo 0); tries=$((tries + 1)); echo "$tries" > "$SLOT_ROOT/pair-tries"
+         if [ "$tries" -le "${MOCK_PAIR_CANCELS:-0}" ]; then echo 'Failed to pair: org.bluez.Error.AuthenticationCanceled'; continue; fi
+         if [ "${MOCK_AUTH_PROMPT:-no}" = yes ]; then echo "[agent] ${MOCK_AUTH_TEXT:-Authorize pairing} (yes/no):"; elif [ "${MOCK_PAIR_FAIL:-no}" = yes ]; then echo 'Failed to pair: org.bluez.Error.AuthenticationFailed'; else touch "$SLOT_ROOT/paired"; echo 'Pairing successful'; fi;;
        connect*)
          if [ "${MOCK_REQUIRE_TRUST:-no}" = yes ] && [ ! -f "$SLOT_ROOT/trusted" ]; then echo 'Failed to connect: org.bluez.Error.Rejected';
          else
@@ -106,7 +108,7 @@ esac
             SLOT_ROOT=str(self.root), SLOT_AUDIO_ROUTE=str(self.root / 'route'),
             SLOT_BT_LOCK=str(self.root / 'lock'), SLOT_BT_INIT=str(init),
             SLOT_HCI_PATH=str(self.root / 'hci0'), SLOT_BASEOS_RELEASE=str(self.root / 'baseos-release'),
-            SLOT_BLUEALSA_PLUGIN=str(self.root / 'bluealsa-plugin.so'), SLOT_BT_POLL_INTERVAL='0.01', SLOT_BT_SCAN_SECONDS='0', SLOT_BT_LOCK_TRIES='150')
+            SLOT_BLUEALSA_PLUGIN=str(self.root / 'bluealsa-plugin.so'), SLOT_BT_POLL_INTERVAL='0.01', SLOT_BT_SCAN_SECONDS='0', SLOT_BT_LOCK_TRIES='150', SLOT_BT_RETRY_DELAY='0')
 
     def tearDown(self):
         self.temp.cleanup()
@@ -746,6 +748,21 @@ esac
         (self.root / 'calls').unlink()
         self.assertEqual(self.run_command('scan').returncode, 0)
         self.assertIn('session transport bredr', (self.root / 'calls').read_text())
+
+    def test_controller_pairing_retries_a_cancelled_first_attempt(self):
+        self.env.update(MOCK_PAIRED='no', MOCK_UUID=self.HOGP, MOCK_PAIR_CANCELS='1')
+        result = self.run_command('pad', MAC)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = (self.root / 'calls').read_text()
+        self.assertEqual(calls.count('session pair ' + MAC), 2)
+        self.assertLess(calls.index('session scan off'), calls.index('session pair ' + MAC))
+
+    def test_controller_pairing_gives_up_after_three_cancelled_attempts(self):
+        self.env.update(MOCK_PAIRED='no', MOCK_UUID=self.HOGP, MOCK_PAIR_CANCELS='5')
+        result = self.run_command('pad', MAC)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual((self.root / 'calls').read_text().count('session pair ' + MAC), 3)
+        self.assertFalse((self.root / 'Config/bluetooth-pads').exists())
 
 if __name__ == '__main__':
     unittest.main()

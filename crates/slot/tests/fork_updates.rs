@@ -2,7 +2,7 @@ use slot::update::*;
 use serde_json::{json,Value};
 use std::io::{Cursor,Write};
 const SHA:&str="1111111111111111111111111111111111111111";
-fn release()->Value {json!({"draft":false,"prerelease":false,"tag_name":"build-2026.11.03-1111111","target_commitish":SHA,"assets":[{"name":"slot.sp-System.zip","state":"uploaded","size":123,"digest":format!("sha256:{}","ab".repeat(32)),"browser_download_url":"https://github.com/jgraving/slot.sp/releases/download/build-2026.11.03-1111111/slot.sp-System.zip"}]})}
+fn release()->Value {json!({"draft":false,"prerelease":false,"tag_name":"build-2026.11.03-1111111","target_commitish":SHA,"assets":[{"name":"slot.sp-System.zip","state":"uploaded","size":123,"digest":format!("sha256:{}","ab".repeat(32)),"browser_download_url":"https://github.com/klauspaschek/advance.sp/releases/download/build-2026.11.03-1111111/slot.sp-System.zip"}]})}
 fn package(source:&str,extra:Option<&str>)->Vec<u8> {
     package_with_entry(source,extra.map(|path|(path,b"bad".as_slice())))
 }
@@ -13,7 +13,7 @@ fn package_with_entry(source:&str,extra:Option<(&str,&[u8])>)->Vec<u8> {
         zip.start_file(format!("System/{name}"),options).unwrap();zip.write_all(b"fixture").unwrap();
     }
     zip.start_file("System/build-info.json",options).unwrap();
-    zip.write_all(json!({"product":"slot.sp","repository":"jgraving/slot.sp","architecture":"aarch64","source_commit":source}).to_string().as_bytes()).unwrap();
+    zip.write_all(json!({"product":"slot.sp","repository":"klauspaschek/advance.sp","architecture":"aarch64","source_commit":source}).to_string().as_bytes()).unwrap();
     if let Some((path,bytes))=extra {zip.start_file(path,options).unwrap();zip.write_all(bytes).unwrap();}
     zip.finish().unwrap().into_inner()
 }
@@ -37,7 +37,7 @@ fn entry_metadata(bytes:&mut [u8],name:&str,mode:u32,size:Option<u32>) {
 #[test]
 fn only_a_published_fork_asset_with_a_digest_is_accepted() {
     let v=release();let r=parse_release(&v.to_string()).unwrap();assert_eq!(r.source,SHA);
-    for bad in ["https://github.com/BrandonKowalski/slot/releases/download/x/slot.sp-System.zip","http://github.com/jgraving/slot.sp/releases/download/x/slot.sp-System.zip"] {
+    for bad in ["https://github.com/BrandonKowalski/slot/releases/download/x/slot.sp-System.zip","http://github.com/klauspaschek/advance.sp/releases/download/x/slot.sp-System.zip"] {
         let mut v=release();v["assets"][0]["browser_download_url"]=json!(bad);assert!(parse_release(&v.to_string()).is_err());
     }
     let mut v=release();v["draft"]=json!(true);assert!(parse_release(&v.to_string()).is_err());
@@ -120,7 +120,7 @@ fn update_checks_use_fork_api_and_skip_the_running_source() {
 fn newer_test_builds_are_never_offered_an_ancestor_or_identical_launcher() {
     for status in ["behind","identical"] {
         let v=release().to_string().into_bytes();
-        let result=check_with(2_000_000_000,&mut |url| if url==LATEST {Ok(v.clone())}else {assert!(url.starts_with("https://api.github.com/repos/jgraving/slot.sp/compare/"));Ok(json!({"status":status}).to_string().into_bytes())},Running{slot:"22222222",baseos:None});
+        let result=check_with(2_000_000_000,&mut |url| if url==LATEST {Ok(v.clone())}else {assert!(url.starts_with("https://api.github.com/repos/klauspaschek/advance.sp/compare/"));Ok(json!({"status":status}).to_string().into_bytes())},Running{slot:"22222222",baseos:None});
         assert_eq!(result,UpdateEvent::UpToDate);
     }
 }

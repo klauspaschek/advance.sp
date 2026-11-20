@@ -115,10 +115,11 @@ pub enum View {
 
 const PAD_FACES_FILE: &str = "Config/controllers.conf";
 
-/// Whether controllers' face buttons are read by position (east is A) instead of by label.
+/// Whether controllers' face buttons are read by position, on the Nintendo layout the handheld
+/// has (east is A), rather than by their printed labels. Nintendo is the default.
 pub fn pad_faces_by_position(root: &std::path::Path) -> bool {
-    std::fs::read_to_string(root.join(PAD_FACES_FILE))
-        .is_ok_and(|text| text.lines().any(|l| l.trim() == "faces=positions"))
+    !std::fs::read_to_string(root.join(PAD_FACES_FILE))
+        .is_ok_and(|text| text.lines().any(|l| l.trim() == "faces=labels"))
 }
 
 fn save_pad_faces(root: &std::path::Path, by_position: bool) -> std::io::Result<()> {
@@ -510,7 +511,7 @@ impl Manager {
                 rows.push("Pair new device".into());
                 rows.push(format!(
                     "PAD_FACES {}",
-                    if self.pad_by_position { "By position" } else { "By label" }
+                    if self.pad_by_position { "Nintendo" } else { "Xbox" }
                 ));
                 rows
             }
@@ -1174,7 +1175,7 @@ fn render_face(lines: &[String], footer_ink: [u8;3], canvas:slot_ui::Canvas, swi
             .or_else(|| label.strip_prefix("PAUSE_DISCONNECT ").map(|v| ("Pause on disconnect", v)))
             .or_else(|| label.strip_prefix("BLUETOOTH ").map(|v| ("Bluetooth", v)))
             .or_else(|| label.strip_prefix("CAROUSEL_SOUNDS ").map(|v| ("Carousel sounds", v)))
-            .or_else(|| label.strip_prefix("PAD_FACES ").map(|v| ("Controller A/B", v)))
+            .or_else(|| label.strip_prefix("PAD_FACES ").map(|v| ("Button layout", v)))
         {
             let name = slot_ui::quick_value_face(name, highlight);
             blit(&mut rgba, &name, slot_ui::QUICK_LABEL_X as u32 - slot_ui::MENU_PAD, top);
@@ -1355,7 +1356,7 @@ mod menu_tests {
         Manager {
             root: PathBuf::new(),
             view: View::Sound,
-            pad_by_position: false,
+            pad_by_position: true,
             pairing_pad: None,
             bluetooth_available: true,
             disconnect_volume: 0,
@@ -1771,7 +1772,7 @@ mod menu_tests {
                 "DEVICE WF-C510",
                 "ACTIVE PAD_DEVICE Xbox Wireless Controller",
                 "Pair new device",
-                "PAD_FACES By label",
+                "PAD_FACES Nintendo",
             ]
         );
         assert_eq!(m.lines()[0], "Bluetooth");
@@ -1802,14 +1803,16 @@ mod menu_tests {
         let mut m = menu();
         m.view = View::Bluetooth;
         m.root = root.path().to_owned();
+        m.pad_by_position = pad_faces_by_position(root.path());
+        assert!(m.pad_by_position, "the Nintendo layout is the default");
         m.selected = m.faces_row();
         assert!(m.lines().last().unwrap().contains("Change"));
         m.input(Action::GbaDown(Btn::Right));
-        assert!(m.pad_by_position);
-        assert!(pad_faces_by_position(root.path()));
-        assert_eq!(m.rows()[m.faces_row()], "PAD_FACES By position");
-        m.input(Action::GbaDown(Btn::A));
+        assert!(!m.pad_by_position);
         assert!(!pad_faces_by_position(root.path()));
+        assert_eq!(m.rows()[m.faces_row()], "PAD_FACES Xbox");
+        m.input(Action::GbaDown(Btn::A));
+        assert!(pad_faces_by_position(root.path()));
     }
 
     #[test]

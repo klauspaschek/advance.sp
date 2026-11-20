@@ -575,6 +575,44 @@ connect() {
     route "bluealsa:DEV=$TARGET,PROFILE=a2dp"
     stop_session
 }
+# Xbox controllers often drop the link and cancel the first pairing, particularly while the
+# radio is still scanning. Stop scanning first, and retry a cancelled or dropped attempt twice.
+pad_pair() {
+    attempt=1
+    while :; do
+        failures=$(grep -c 'Failed to pair:' "$WORK/session-output" || true)
+        STAGE=pairing
+        send 'scan off'
+        sleep "${SLOT_BT_POLL_INTERVAL:-1}"
+        send "pair $TARGET"
+        n=0
+        while :; do
+            check_cancel
+            info=$(bt info "$TARGET") || true
+            printf '%s\n' "$info" | grep -q '^[[:space:]]*Paired: yes[[:space:]]*$' && return 0
+            if grep -q 'Authorize service\|Authorize pairing\|Confirm passkey\|Enter PIN code\|Enter passkey' "$WORK/session-output"; then
+                if ! pad_authorize; then
+                    send no
+                    fail 'This device requires pairing confirmation that slot cannot safely provide'
+                fi
+            fi
+            now=$(grep -c 'Failed to pair:' "$WORK/session-output" || true)
+            if [ "$now" -gt "$failures" ]; then
+                reason=$(sed -n 's/.*Failed to pair: //p' "$WORK/session-output" | tail -n 1)
+                if [ "$attempt" -lt 3 ] && printf '%s\n' "$reason" | grep -Eq 'AuthenticationCanceled|ConnectionAttemptFailed|AuthenticationTimeout|Page Timeout'; then
+                    log "Controller pairing attempt $attempt failed ($reason); retrying"
+                    attempt=$((attempt + 1))
+                    sleep "${SLOT_BT_RETRY_DELAY:-2}"
+                    break
+                fi
+                fail "Pairing failed: $reason"
+            fi
+            n=$((n + 1))
+            [ "$n" -lt 45 ] || fail 'Timed out waiting for Paired'
+            sleep "${SLOT_BT_POLL_INTERVAL:-1}"
+        done
+    done
+}
 connect_pad() {
     valid_mac "$TARGET" || fail 'Invalid Bluetooth address'
     start
@@ -582,10 +620,7 @@ connect_pad() {
     info=$(bt info "$TARGET") || true
     if ! printf '%s\n' "$info" | grep -q '^[[:space:]]*Paired: yes[[:space:]]*$'; then
         start_session
-        STAGE=pairing
-        send "pair $TARGET"
-        wait_property Paired 45
-        send 'scan off'
+        pad_pair
     fi
     STAGE='controller service discovery'
     n=0

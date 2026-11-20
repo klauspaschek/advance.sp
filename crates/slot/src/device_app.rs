@@ -109,6 +109,13 @@ pub fn run() {
         input.steer_with_stick(frontend.app().left_stick_dpad());
         input.pad_faces_by_position(frontend.app().pad_faces_by_position());
         frontend.advance(&mut input);
+        for action in input.take_actions() {
+            frontend.pad_action(action);
+        }
+        // a controller turned on while the handheld sleeps lightly wakes it, as on a console
+        if input.take_pad_arrival() && frontend.dozing() {
+            input.press_power();
+        }
         if frontend.restarting() {
             frontend.restart();
         }

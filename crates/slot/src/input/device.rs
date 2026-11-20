@@ -7,11 +7,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use slot_input::{Btn, InputSource, Millis, RawEvent};
+use slot_input::{Action, Btn, InputSource, Millis, RawEvent};
 
 use super::evdev::{
-    decode, device_name, is_gamepad, layout_of, pick_devices, to_raw_for, trigger_axes, Ev,
-    FaceButtons, Hat, Layout, PadAxes, Range, ABS_X, ABS_Y, EVENT_BYTES, EV_ABS, EV_KEY, EV_SYN,
+    decode, device_name, is_gamepad, layout_of, pad_extra, pick_devices, to_raw_for,
+    trigger_axes, Ev, FaceButtons, Hat, Layout, PadAxes, PadExtra, Range, ABS_X, ABS_Y,
+    EVENT_BYTES, EV_ABS, EV_KEY, EV_SYN,
 };
 use super::trace;
 
@@ -25,11 +26,19 @@ const LID_POLL_MS: Millis = 150;
 /// that connects while slot runs brings a node of its own.
 const WATCH_EVERY: Duration = Duration::from_secs(1);
 
+/// How long Share must be held before it becomes the power button: shorter is a screenshot.
+pub const SHARE_POWER_MS: Millis = 500;
+
 pub struct DeviceInput {
     pending: Arc<Mutex<Vec<RawEvent>>>,
     stick: Arc<AtomicBool>,
     by_position: Arc<AtomicBool>,
     pads: Arc<Mutex<Vec<String>>>,
+    extras: Arc<Mutex<Vec<PadExtra>>>,
+    arrived: Arc<AtomicBool>,
+    share_since: Option<Millis>,
+    share_power: bool,
+    actions: Vec<Action>,
     hall: Option<PathBuf>,
     lid_shut: Option<bool>,
     next_lid_poll: Millis,
@@ -52,16 +61,23 @@ impl DeviceInput {
             pending: Arc::new(Mutex::new(Vec::new())),
             opened: Arc::new(Mutex::new(HashSet::new())),
             stick: Arc::new(AtomicBool::new(false)),
-            by_position: Arc::new(AtomicBool::new(false)),
+            by_position: Arc::new(AtomicBool::new(true)),
             pads: Arc::new(Mutex::new(Vec::new())),
+            extras: Arc::new(Mutex::new(Vec::new())),
+            arrived: Arc::new(AtomicBool::new(false)),
             trace,
         };
-        nodes.open_new();
+        nodes.open_new(false);
         let input = DeviceInput {
             pending: nodes.pending.clone(),
             stick: nodes.stick.clone(),
             by_position: nodes.by_position.clone(),
             pads: nodes.pads.clone(),
+            extras: nodes.extras.clone(),
+            arrived: nodes.arrived.clone(),
+            share_since: None,
+            share_power: false,
+            actions: Vec::new(),
             hall: find_hall(Path::new(PSY)),
             lid_shut: None,
             next_lid_poll: 0,
@@ -70,7 +86,7 @@ impl DeviceInput {
             .name("slot-input-watch".into())
             .spawn(move || loop {
                 std::thread::sleep(WATCH_EVERY);
-                nodes.open_new();
+                nodes.open_new(true);
             });
         if let Err(e) = spawned {
             eprintln!("slot: input watch: {e}");
@@ -87,12 +103,15 @@ struct Nodes {
     stick: Arc<AtomicBool>,
     by_position: Arc<AtomicBool>,
     pads: Arc<Mutex<Vec<String>>>,
+    extras: Arc<Mutex<Vec<PadExtra>>>,
+    arrived: Arc<AtomicBool>,
     trace: Option<Arc<Trace>>,
 }
 
 impl Nodes {
-    /// Starts a reader for each wanted node that has none yet.
-    fn open_new(&self) {
+    /// Starts a reader for each wanted node that has none yet. `later` marks nodes found after
+    /// startup, whose gamepads count as arriving (to wake the handheld from light sleep).
+    fn open_new(&self, later: bool) {
         for node in pick_devices(&self.dev, &self.sys) {
             let fresh = self
                 .opened
@@ -113,6 +132,9 @@ impl Nodes {
             quicken_poll(&self.sys, &node);
             if pad {
                 lock(&self.pads).push(name.clone());
+                if later {
+                    self.arrived.store(true, Ordering::Relaxed);
+                }
             }
             let reader = Reader {
                 layout,
@@ -120,6 +142,7 @@ impl Nodes {
                 queue: self.pending.clone(),
                 steers: self.stick.clone(),
                 by_position: self.by_position.clone(),
+                extras: pad.then(|| self.extras.clone()),
                 trace: self.trace.clone(),
             };
             let opened = self.opened.clone();
@@ -196,6 +219,8 @@ struct Reader {
     queue: Arc<Mutex<Vec<RawEvent>>>,
     steers: Arc<AtomicBool>,
     by_position: Arc<AtomicBool>,
+    /// A gamepad's buttons the handheld does not have.
+    extras: Option<Arc<Mutex<Vec<PadExtra>>>>,
     trace: Option<Arc<Trace>>,
 }
 
@@ -206,6 +231,9 @@ impl Reader {
         // a pad that drops mid-press must not leave its buttons held
         if !held.is_empty() {
             lock(&self.queue).extend(held.into_iter().map(RawEvent::Up));
+        }
+        if let Some(extras) = &self.extras {
+            lock(extras).extend([PadExtra::Share(false), PadExtra::Rewind(false), PadExtra::FastForward(false)]);
         }
     }
 
@@ -223,11 +251,13 @@ impl Reader {
                 return;
             }
         };
-        let mut axes = PadAxes::new(
+        let axes = PadAxes::new(
             [ABS_X, ABS_Y].map(|c| axis_range(&file, c, Range::STICK)),
             self.triggers,
             self.triggers.map(|c| axis_range(&file, c, Range::TRIGGER)),
         );
+        let right = axes.right_codes().map(|c| axis_range(&file, c, Range::STICK));
+        let mut axes = axes.with_right_stick(right);
         let mut buf = [0u8; EVENT_BYTES * 16];
         loop {
             let read = match file.read(&mut buf) {
@@ -251,6 +281,18 @@ impl Reader {
                 }
                 if (ev.kind == EV_KEY && ev.value == 1) || (ev.kind == EV_ABS && ev.value != 0) {
                     crate::latency::read();
+                }
+                if let Some(extras) = &self.extras {
+                    if let Some(extra) = pad_extra(ev) {
+                        lock(extras).push(extra);
+                        continue;
+                    }
+                    if ev.kind == EV_ABS {
+                        if let Some(shortcuts) = axes.right_stick(ev) {
+                            lock(extras).extend(shortcuts);
+                            continue;
+                        }
+                    }
                 }
                 match ev.kind {
                     EV_ABS if pad => {
@@ -334,6 +376,56 @@ impl DeviceInput {
         lock(&self.pads).clone()
     }
 
+    /// What a gamepad's extra buttons asked for since the last call: a screenshot, or saving or
+    /// loading a state.
+    pub fn take_actions(&mut self) -> Vec<Action> {
+        std::mem::take(&mut self.actions)
+    }
+
+    /// Whether a gamepad connected since the last call (after startup).
+    pub fn take_pad_arrival(&self) -> bool {
+        self.arrived.swap(false, Ordering::Relaxed)
+    }
+
+    /// A tap of the power button, as if pressed: wakes the handheld from light sleep.
+    pub fn press_power(&self) {
+        lock(&self.pending).extend([RawEvent::Down(Btn::Power), RawEvent::Up(Btn::Power)]);
+    }
+
+    fn pad_extras(&mut self, now: Millis, out: &mut Vec<RawEvent>) {
+        for extra in std::mem::take(&mut *lock(&self.extras)) {
+            match extra {
+                PadExtra::Share(true) => {
+                    if self.share_since.is_none() {
+                        self.share_since = Some(now);
+                        self.share_power = false;
+                    }
+                }
+                PadExtra::Share(false) => {
+                    if self.share_since.take().is_some() {
+                        if std::mem::take(&mut self.share_power) {
+                            out.push(RawEvent::Up(Btn::Power));
+                        } else {
+                            self.actions.push(Action::Screenshot);
+                        }
+                    }
+                }
+                PadExtra::SaveState => self.actions.push(Action::SaveState),
+                PadExtra::LoadState => self.actions.push(Action::LoadState),
+                PadExtra::Rewind(on) => self.actions.push(if on { Action::RewindStart } else { Action::RewindStop }),
+                PadExtra::FastForward(on) => self.actions.push(if on { Action::FfStart } else { Action::FfStop }),
+                PadExtra::ShaderNext => self.actions.push(Action::ShaderNext),
+                PadExtra::ShaderPrev => self.actions.push(Action::ShaderPrev),
+            }
+        }
+        if let Some(since) = self.share_since {
+            if !self.share_power && now.saturating_sub(since) >= SHARE_POWER_MS {
+                self.share_power = true;
+                out.push(RawEvent::Down(Btn::Power));
+            }
+        }
+    }
+
     fn read_lid(&self) -> Option<bool> {
         let raw = std::fs::read_to_string(self.hall.as_ref()?).ok()?;
         match raw.trim() {
@@ -347,6 +439,7 @@ impl DeviceInput {
 impl InputSource for DeviceInput {
     fn poll(&mut self, now: Millis) -> Vec<RawEvent> {
         let mut out = std::mem::take(&mut *self.pending.lock().unwrap_or_else(|e| e.into_inner()));
+        self.pad_extras(now, &mut out);
         if self.hall.is_some() && now >= self.next_lid_poll {
             self.next_lid_poll = now + LID_POLL_MS;
             if let Some(shut) = self.read_lid() {
@@ -375,4 +468,47 @@ fn find_hall(psy: &Path) -> Option<PathBuf> {
         .into_iter()
         .map(|d| d.join("hallkey"))
         .find(|p| p.is_file())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn input() -> (tempfile::TempDir, DeviceInput) {
+        let d = tempfile::tempdir().unwrap();
+        let input = DeviceInput::open_in(&d.path().join("dev"), &d.path().join("sys"), d.path(), false);
+        (d, input)
+    }
+
+    #[test]
+    fn share_held_is_the_power_button() {
+        let (_d, mut input) = input();
+        lock(&input.extras).push(PadExtra::Share(true));
+        assert!(input.poll(1000).is_empty());
+        assert!(input.poll(1000 + SHARE_POWER_MS - 1).is_empty());
+        assert_eq!(input.poll(1000 + SHARE_POWER_MS), vec![RawEvent::Down(Btn::Power)]);
+        assert!(input.poll(3000).is_empty(), "the power button stays held: slot's own hold powers off");
+        lock(&input.extras).push(PadExtra::Share(false));
+        assert_eq!(input.poll(3100), vec![RawEvent::Up(Btn::Power)]);
+        assert!(input.take_actions().is_empty(), "a hold is no screenshot");
+    }
+
+    #[test]
+    fn a_release_without_a_press_does_nothing() {
+        let (_d, mut input) = input();
+        lock(&input.extras).push(PadExtra::Share(false));
+        assert!(input.poll(0).is_empty());
+        assert!(input.take_actions().is_empty());
+    }
+
+    #[test]
+    fn a_power_tap_is_queued_for_waking() {
+        let (_d, mut input) = input();
+        assert!(!input.take_pad_arrival());
+        input.arrived.store(true, Ordering::Relaxed);
+        assert!(input.take_pad_arrival());
+        assert!(!input.take_pad_arrival(), "taken once");
+        input.press_power();
+        assert_eq!(input.poll(0), vec![RawEvent::Down(Btn::Power), RawEvent::Up(Btn::Power)]);
+    }
 }

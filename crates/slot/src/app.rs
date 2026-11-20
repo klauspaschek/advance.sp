@@ -632,7 +632,7 @@ impl App {
             catalog,
             bluetooth: None,
             bluetooth_supported: false,
-            pad_faces_by_position: false,
+            pad_faces_by_position: true,
             kid_status_icon: None,
             ra_sync_indicator: None,
             wifi_connecting_indicator: None,

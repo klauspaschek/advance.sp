@@ -62,9 +62,9 @@ pub enum UpdateFail {
     Rejected(String),
 }
 
-pub const SLOT_REPO: &str = "jgraving/slot.sp";
+pub const SLOT_REPO: &str = "klauspaschek/advance.sp";
 const BASEOS_REPO: &str = "pvaibhav/BaseOS";
-pub const LATEST: &str = "https://api.github.com/repos/jgraving/slot.sp/releases/latest";
+pub const LATEST: &str = "https://api.github.com/repos/klauspaschek/advance.sp/releases/latest";
 const BASEOS_LATEST: &str = "https://api.github.com/repos/pvaibhav/BaseOS/releases/latest";
 
 fn release_json(json:&str)->Result<serde_json::Value,UpdateFail> {

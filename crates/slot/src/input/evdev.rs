@@ -184,6 +184,8 @@ pub fn device_name(sys: &Path, node: &Path) -> String {
 pub const ABS_X: u16 = 0x00;
 pub const ABS_Y: u16 = 0x01;
 pub const ABS_Z: u16 = 0x02;
+pub const ABS_RX: u16 = 0x03;
+pub const ABS_RY: u16 = 0x04;
 pub const ABS_RZ: u16 = 0x05;
 pub const ABS_GAS: u16 = 0x09;
 pub const ABS_BRAKE: u16 = 0x0a;
@@ -191,6 +193,10 @@ pub const ABS_BRAKE: u16 = 0x0a;
 pub const BTN_SOUTH: u16 = 0x130;
 pub const KEY_BACK: u16 = 158;
 pub const KEY_HOMEPAGE: u16 = 172;
+/// The Share button of current Xbox controllers.
+pub const KEY_RECORD: u16 = 167;
+pub const BTN_THUMBL: u16 = 0x13d;
+pub const BTN_THUMBR: u16 = 0x13e;
 
 /// Whose codes a node sends: the handheld's own, or an external pad's.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
@@ -225,13 +231,13 @@ pub fn is_gamepad(sys: &Path, node: &Path) -> bool {
         .is_ok_and(|keys| has_bit(&keys, BTN_SOUTH))
 }
 
-/// How a pad's face buttons are read: by the letter printed on them (Xbox A is A), or by where
-/// they sit (the east button is A, as on the handheld and a Nintendo pad).
+/// How a pad's face buttons are read: by where they sit (the east button is A and the north one
+/// X, as on the handheld and a Nintendo pad), or by the letter printed on them (Xbox A is A).
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Default)]
 pub enum FaceButtons {
     #[default]
-    Labels,
     Positions,
+    Labels,
 }
 
 /// An external pad's key code as a button.
@@ -252,8 +258,21 @@ pub fn pad_code_to_btn(code: u16, faces: FaceButtons) -> Option<Btn> {
                 Btn::B
             }
         }
-        0x133 => Btn::X,
-        0x134 => Btn::Y,
+        // Xbox X sits west and Y north: the other way round from the handheld
+        0x133 => {
+            if by_position {
+                Btn::Y
+            } else {
+                Btn::X
+            }
+        }
+        0x134 => {
+            if by_position {
+                Btn::X
+            } else {
+                Btn::Y
+            }
+        }
         0x136 => Btn::L1,
         0x137 => Btn::R1,
         0x138 => Btn::L2,
@@ -266,6 +285,39 @@ pub fn pad_code_to_btn(code: u16, faces: FaceButtons) -> Option<Btn> {
         114 => Btn::VolDown,
         _ => return None,
     })
+}
+
+/// A pad button the handheld does not have, handled by slot itself rather than as a button.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum PadExtra {
+    /// Share pressed (true) or released (false): a tap takes a screenshot, a hold is the power
+    /// button.
+    Share(bool),
+    /// The left stick pressed in.
+    SaveState,
+    /// The right stick pressed in.
+    LoadState,
+    /// The right stick held left (true) or let go (false).
+    Rewind(bool),
+    /// The right stick held right (true) or let go (false).
+    FastForward(bool),
+    /// The right stick pushed up.
+    ShaderNext,
+    /// The right stick pushed down.
+    ShaderPrev,
+}
+
+pub fn pad_extra(ev: Ev) -> Option<PadExtra> {
+    if ev.kind != EV_KEY {
+        return None;
+    }
+    match (ev.code, ev.value) {
+        (KEY_RECORD, 1) => Some(PadExtra::Share(true)),
+        (KEY_RECORD, 0) => Some(PadExtra::Share(false)),
+        (BTN_THUMBL, 1) => Some(PadExtra::SaveState),
+        (BTN_THUMBR, 1) => Some(PadExtra::LoadState),
+        _ => None,
+    }
 }
 
 pub fn to_raw_for(layout: Layout, faces: FaceButtons, ev: Ev) -> Option<RawEvent> {
@@ -323,13 +375,31 @@ pub fn trigger_axes(sys: &Path, node: &Path) -> [u16; 2] {
     }
 }
 
-/// An external pad's axes: the left stick and the hat steer the d-pad, and an analog trigger
-/// past half its travel presses L2 or R2. The right stick has no use in a GB/GBA game.
+/// Which axes carry a pad's right stick, across then down: Z and RZ on the HID gamepad layout
+/// (triggers on brake and gas), RX and RY otherwise.
+pub fn right_stick_axes(triggers: [u16; 2]) -> [u16; 2] {
+    if triggers == [ABS_BRAKE, ABS_GAS] {
+        [ABS_Z, ABS_RZ]
+    } else {
+        [ABS_RX, ABS_RY]
+    }
+}
+
+/// How far the right stick is pushed before it acts, and how far back it must come to let go.
+const RIGHT_PRESS: i32 = 2048;
+const RIGHT_LET_GO: i32 = 1024;
+
+/// An external pad's axes: the left stick and the hat steer the d-pad, an analog trigger past
+/// half its travel presses L2 or R2, and the right stick is a set of shortcuts (rewind and
+/// fast-forward across, the shader up and down).
 pub struct PadAxes {
     stick: [Range; 2],
     trigger_codes: [u16; 2],
     triggers: [Range; 2],
     held: [bool; 2],
+    right_codes: [u16; 2],
+    right: [Range; 2],
+    right_held: [i32; 2],
 }
 
 impl PadAxes {
@@ -339,7 +409,54 @@ impl PadAxes {
             trigger_codes,
             triggers,
             held: [false; 2],
+            right_codes: right_stick_axes(trigger_codes),
+            right: [Range::STICK; 2],
+            right_held: [0; 2],
         }
+    }
+
+    /// The right stick's reach, as the driver reports it.
+    pub fn with_right_stick(mut self, right: [Range; 2]) -> Self {
+        self.right = right;
+        self
+    }
+
+    pub fn right_codes(&self) -> [u16; 2] {
+        self.right_codes
+    }
+
+    /// The right stick's shortcuts, or `None` for an axis that is not the right stick.
+    pub fn right_stick(&mut self, ev: Ev) -> Option<Vec<PadExtra>> {
+        let axis = self.right_codes.iter().position(|c| *c == ev.code)?;
+        let value = self.right[axis].stick(ev.value);
+        let held = self.right_held[axis];
+        let reach = if held == 0 { RIGHT_PRESS } else { RIGHT_LET_GO };
+        let now = if value.abs() >= reach { value.signum() } else { 0 };
+        if now == held {
+            return Some(Vec::new());
+        }
+        self.right_held[axis] = now;
+        let mut out = Vec::new();
+        if axis == 0 {
+            match held {
+                -1 => out.push(PadExtra::Rewind(false)),
+                1 => out.push(PadExtra::FastForward(false)),
+                _ => {}
+            }
+            match now {
+                -1 => out.push(PadExtra::Rewind(true)),
+                1 => out.push(PadExtra::FastForward(true)),
+                _ => {}
+            }
+        } else {
+            // up is negative
+            match now {
+                -1 => out.push(PadExtra::ShaderNext),
+                1 => out.push(PadExtra::ShaderPrev),
+                _ => {}
+            }
+        }
+        Some(out)
     }
 
     pub fn feed(&mut self, hat: &mut Hat, ev: Ev) -> Vec<RawEvent> {

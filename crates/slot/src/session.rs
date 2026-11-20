@@ -311,6 +311,19 @@ impl Session {
         }
     }
 
+    /// An action from a gamepad's extra buttons (screenshot, save or load state), taken like a
+    /// shortcut, except while an editor reads buttons literally or the handheld sleeps.
+    pub fn pad_action(&mut self, action: Action) {
+        if self.app.capturing() || self.app.literal_menu_buttons() || self.dozing() {
+            return;
+        }
+        self.act(action);
+    }
+
+    pub fn is_dozing(&self) -> bool {
+        self.dozing()
+    }
+
     fn act(&mut self, action: Action) {
         if trace() {
             eprintln!("slot: {action:?} in {:?}", self.app.phase());

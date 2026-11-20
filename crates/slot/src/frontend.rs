@@ -1112,6 +1112,16 @@ impl Frontend {
         self.session.update(dt);
     }
 
+    /// An action from a gamepad's extra buttons.
+    pub fn pad_action(&mut self, action: slot_input::Action) {
+        self.session.pad_action(action);
+    }
+
+    /// Whether the handheld is in light sleep.
+    pub fn dozing(&self) -> bool {
+        self.session.is_dozing()
+    }
+
     pub fn gallery_decodes(&self) -> usize {
         self.switcher.loader.as_ref().map_or(0, ShotLoader::decoded)
     }
