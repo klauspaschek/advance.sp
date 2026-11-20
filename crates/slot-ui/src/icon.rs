@@ -601,10 +601,13 @@ pub fn sound_device_icon(icon: Icon, ink: [u8; 3]) -> crate::UndoFace {
             h: 0,
         };
     };
-    let (_, _, rt, rb) = bounds(&reference);
+    let (rl, rr, rt, rb) = bounds(&reference);
     let (l, r, t, b) = bounds(&source);
-    let h = rb - rt + 1;
-    let scale = (b - t + 1) as f32 / h as f32;
+    // equal ink heights; a wide glyph (the gamepad) instead fits the headphones' width, so it
+    // does not outgrow the others
+    let scale = ((b - t + 1) as f32 / (rb - rt + 1) as f32)
+        .max(if icon == Icon::Gamepad { (r - l + 1) as f32 / (rr - rl + 1) as f32 } else { 0. });
+    let h = ((b - t + 1) as f32 / scale).round().max(1.) as u32;
     let w = ((r - l + 1) as f32 / scale).ceil() as u32;
     let mut rgba = vec![0; (w * h * 4) as usize];
     for y in 0..h {

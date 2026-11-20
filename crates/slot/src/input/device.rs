@@ -332,6 +332,8 @@ impl Trace {
         let dir = crate::root::logs_dir(root);
         let _ = std::fs::create_dir_all(&dir);
         let path = dir.join(trace::TRACE_FILE);
+        // keep the previous session's trace: a restart must not lose what went wrong before it
+        let _ = std::fs::rename(&path, dir.join(format!("{}.1", trace::TRACE_FILE)));
         let mut file = match File::create(&path) {
             Ok(f) => f,
             Err(e) => {

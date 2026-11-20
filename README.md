@@ -17,7 +17,6 @@
 | 🎮 **Bluetooth game controllers**: pair, play, sleep and wake from the controller | ✅ Done, tested on an RG SP with an Xbox Wireless Controller |
 | 📶 **A Bluetooth tile** in the menu: one place for the radio, headphones and controllers | ✅ Done |
 | 📺 **HDMI out** through the RG SP's mini HDMI port: plug in a TV and the picture follows the cable | 🚧 Next, ported from Cartridge |
-| 🖼️ **A TV frame** in the shell colour with the SP logo, for the bars beside a 3:2 game on a 16:9 TV | 💡 Planned with HDMI |
 
 ### Menu changes from slot.sp
 

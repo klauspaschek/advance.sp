@@ -3,7 +3,9 @@ use crate::{Btn, Millis, RawEvent};
 pub const SELECT_CHORD_MS: Millis = 600;
 
 pub const SELECT_TAP_MS: Millis = 50;
-pub const MENU_TAP_MS: Millis = 250;
+/// A MENU press released sooner than this is a tap. Generous enough for a controller's deep,
+/// deliberate Xbox button press; the eject hold (MENU_HOLD_MS) stays well apart from it.
+pub const MENU_TAP_MS: Millis = 600;
 pub const MENU_DOUBLE_TAP_MS: Millis = 350;
 pub const MENU_HOLD_MS: Millis = 1000;
 pub const FF_DOUBLE_TAP_MS: Millis = 250;

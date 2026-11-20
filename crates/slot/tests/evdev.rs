@@ -397,3 +397,21 @@ fn only_the_skus_nextui_lists_with_a_left_stick_have_one() {
         assert!(!has_left_stick(t), "{t}");
     }
 }
+
+#[test]
+fn a_new_trace_keeps_the_previous_sessions_trace() {
+    let d = input_tree();
+    let card = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(card.path().join("Logs")).unwrap();
+    std::fs::write(card.path().join("Logs/input-trace.log"), "earlier session\n").unwrap();
+    drop(slot::input::DeviceInput::open_in(
+        &d.path().join("dev/input"),
+        &d.path().join("sys/class/input"),
+        card.path(),
+        true,
+    ));
+    let previous = std::fs::read_to_string(card.path().join("Logs/input-trace.log.1")).unwrap();
+    assert_eq!(previous, "earlier session\n");
+    let current = std::fs::read_to_string(card.path().join("Logs/input-trace.log")).unwrap();
+    assert!(current.contains("event1 opened"), "{current}");
+}

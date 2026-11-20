@@ -197,6 +197,22 @@ fn menu_single_tap_opens_the_quick_menu_with_menu_dpad_display_enabled() {
 }
 
 #[test]
+fn a_slow_deliberate_menu_press_still_opens_the_quick_menu() {
+    // a controller's Xbox button travels far: a firm press can last half a second
+    let mut g = gestures();
+    g.feed(Down(Menu), 0);
+    assert_eq!(g.feed(Up(Menu), 450), vec![QuickMenu]);
+}
+
+#[test]
+fn a_menu_held_past_the_tap_but_released_before_eject_does_nothing() {
+    let mut g = gestures();
+    g.feed(Down(Menu), 0);
+    assert!(g.feed(Up(Menu), slot_input::MENU_TAP_MS).is_empty());
+    assert!(slot_input::MENU_TAP_MS + 300 <= MENU_HOLD_MS, "tap and eject stay apart");
+}
+
+#[test]
 fn a_menu_hold_is_not_also_a_tap() {
     let mut g = gestures();
     g.feed(Down(Menu), 0);

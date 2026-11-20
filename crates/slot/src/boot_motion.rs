@@ -4,9 +4,17 @@ use slot_gfx::{Canvas, Compositor, Draw, TexId};
 pub const BOOT_MS: u64 = 1120;
 const DROP_MS: u64 = 510;
 const LAND_MS: u64 = 1010;
-const INK: [u8; 3] = [246,247,242];
-// Blank columns between the seven glyphs in the native firmware bitmap.
-const LETTER_EDGES: [f32; 8] = [0.0, 70.0, 94.0, 160.0, 202.0, 228.0, 284.0, 363.0];
+// The ADVANCE·SP wordmark's cream.
+const INK: [u8; 3] = [242,232,198];
+// Seven pieces of the firmware wordmark, cut where its slanted, touching letters are thinnest
+// (A | D | V | AN | CE· | S | P); the gap before SP is blank.
+const LETTER_EDGES: [f32; 8] = [0.0, 61.0, 113.0, 153.0, 205.0, 261.0, 303.0, 363.0];
+/// How far from the background a pixel may be and still count as background: the wordmark's
+/// near-black specks must not draw as dark dots.
+const BACKGROUND_TOLERANCE: u8 = 24;
+fn is_background(rgb: [u8; 3], background: [u8; 3]) -> bool {
+    rgb.iter().zip(background).all(|(c, b)| c.abs_diff(b) <= BACKGROUND_TOLERANCE)
+}
 fn smooth(t: f32) -> f32 { let t=t.clamp(0.0,1.0); t*t*t*(t*(t*6.0-15.0)+10.0) }
 fn mix(a: f32,b: f32,t: f32)->f32 { a+(b-a)*t }
 
@@ -41,7 +49,7 @@ impl BootMotion {
         // texture uploads, or offscreen pass during the animation.
         let logo=crate::bootlogo::decode(include_bytes!("../../../card/System/bootlogo.bmp"))?;
         let background=*logo.rgb.first()?;
-        let rgba:Vec<u8>=logo.rgb.iter().flat_map(|rgb| [rgb[0],rgb[1],rgb[2],if *rgb==background {0}else{255}]).collect();
+        let rgba:Vec<u8>=logo.rgb.iter().flat_map(|rgb| [rgb[0],rgb[1],rgb[2],if is_background(*rgb,background) {0}else{255}]).collect();
         let blob:Vec<u8>=(0..64).flat_map(|y|(0..64).flat_map(move |x| {
             let distance=(x as f32+0.5-32.0).hypot(y as f32+0.5-32.0);
             [INK[0],INK[1],INK[2],((32.5-distance).clamp(0.0,1.0)*255.0).round()as u8]
@@ -138,13 +146,17 @@ mod tests {
         assert!(last[1]>canvas.h-slot_ui::MOUTH_H);
     }
     #[test]
-    fn letter_crops_cover_the_original_mark_without_cutting_any_ink() {
+    fn letter_crops_cover_the_whole_mark_and_cut_only_where_it_is_thin() {
         let logo=crate::bootlogo::decode(include_bytes!("../../../card/System/bootlogo.bmp")).unwrap();
+        assert_eq!(LETTER_EDGES[0],0.0);
         assert_eq!(logo.width as f32,*LETTER_EDGES.last().unwrap());
+        assert!(LETTER_EDGES.windows(2).all(|e|e[0]<e[1]));
         let background=logo.rgb[0];
-        for &edge in &LETTER_EDGES[1..7] {for y in 0..logo.height {
-            assert_eq!(logo.rgb[y*logo.width+edge as usize],background,"letter crop crosses a stroke");
-        }}
+        let ink=|x:usize|(0..logo.height).filter(|y|!is_background(logo.rgb[y*logo.width+x],background)).count();
+        let busiest=(0..logo.width).map(ink).max().unwrap();
+        for &edge in &LETTER_EDGES[1..7] {
+            assert!(ink(edge as usize)*2<=busiest,"letter crop at {edge} crosses a thick stroke");
+        }
     }
     #[test]
     fn gathering_is_continuous_and_has_only_a_quiet_spring_overshoot() {
