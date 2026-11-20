@@ -313,9 +313,11 @@ fn raster(icon: Icon, px: f32) -> Option<Arc<Raster>> {
 fn rasterise(icon: Icon, px: f32) -> Option<Raster> {
     let font = symbols_font()?;
     let f = frame(font, px);
-    if icon == Icon::VolumeMuted {
+    if matches!(icon, Icon::VolumeMuted | Icon::Gamepad) {
+        // the symbols font has neither glyph: both are drawn from their own paths
         let side=px.round().max(1.0) as u32;
-        let svg=format!(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><g fill="white">{MUTED_SPEAKER}</g></svg>"#);
+        let path=if icon==Icon::Gamepad {GAMEPAD_PATH} else {MUTED_SPEAKER};
+        let svg=format!(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><g fill="white">{path}</g></svg>"#);
         let rgba=crate::art::render_svg(&svg,side,side)?;
         let mut out=Raster{cov:vec![0;(f.w*f.h)as usize],w:f.w,h:f.h};
         let (x0,y0)=((f.w-side)/2,(f.h-side)/2);
