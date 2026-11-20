@@ -59,6 +59,7 @@ pub fn tile_face_label(row:QuickRow,lit:bool,label_override:Option<&str>)->UndoF
         QuickRow::Controls|QuickRow::PlayControls=>("Device\ncontrols",r##"<path fill-rule="evenodd" d="M17 4h14v13h13v14H31v13H17V31H4V17h13z M21 21v6h6v-6z"/>"##),
         QuickRow::Wifi=>("Network",r##"<path d="M3 16q21-21 42 0l-4 5q-17-17-34 0zM11 25q13-13 26 0l-4 5q-9-9-18 0zM19 35q5-5 10 0l-5 7z"/>"##),
         QuickRow::Kids=>("Parental\ncontrols",crate::icon::SMILEY_PATH),
+        QuickRow::Radio=>("Bluetooth",r##"<path transform="scale(2)" fill-rule="evenodd" d="M11 1 20 9l-5 3 5 3-9 8V14l-5 5-2-2 6-5-6-5 2-2 5 5z M14 6v4l2-2z M14 14v4l2-2z"/>"##),
         QuickRow::Resume=>("Resume",r##"<path d="M15 6q-3-2-3 2v32q0 4 3 2l27-16q3-2 0-4z"/>"##),
         QuickRow::ExitGame=>("Exit game",r##"<path d="M7 5h18v5H12v28h13v5H7zM30 13l13 11-13 11v-8H18v-6h12z"/>"##),
         QuickRow::States|QuickRow::UndoSave|QuickRow::UndoLoad=>("Save states",r##"<path fill-rule="evenodd" d="M8 3h27l8 8v32H5V6z M13 7v13h19V7z M13 29v10h22V29z"/>"##),

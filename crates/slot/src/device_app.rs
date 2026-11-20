@@ -107,6 +107,7 @@ pub fn run() {
             std::thread::sleep(left);
         }
         input.steer_with_stick(frontend.app().left_stick_dpad());
+        input.pad_faces_by_position(frontend.app().pad_faces_by_position());
         frontend.advance(&mut input);
         if frontend.restarting() {
             frontend.restart();

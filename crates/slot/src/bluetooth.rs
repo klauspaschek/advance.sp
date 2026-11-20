@@ -14,6 +14,16 @@ pub struct Headphones {
     pub name: String,
     pub paired: bool,
     pub connected: bool,
+    /// BlueZ's icon for the device, such as `input-gaming` or `audio-headset`; empty if unknown.
+    pub kind: String,
+}
+
+impl Headphones {
+    /// A controller (or other input device), paired and connected through the `pad` verb
+    /// rather than as an audio output.
+    pub fn gamepad(&self) -> bool {
+        self.kind.starts_with("input-")
+    }
 }
 
 pub fn parse_devices(text: &str) -> Vec<Headphones> {
@@ -37,6 +47,7 @@ pub fn parse_devices(text: &str) -> Vec<Headphones> {
                 name: name.to_owned(),
                 paired: false,
                 connected: false,
+                kind: String::new(),
             });
         }
     }
@@ -46,6 +57,11 @@ pub fn parse_devices(text: &str) -> Vec<Headphones> {
             if let Some(d) = devices.iter_mut().find(|d| d.address == words[1]) {
                 d.paired = words[2] == "yes";
                 d.connected = words[3] == "yes";
+            }
+        }
+        if words.len() == 3 && words[0] == "KIND" {
+            if let Some(d) = devices.iter_mut().find(|d| d.address == words[1]) {
+                d.kind = words[2].to_owned();
             }
         }
     }
@@ -89,8 +105,37 @@ pub enum Page {
     Pair,
 }
 
+/// Which tile opened the manager: Sound (volume and outputs) or Bluetooth (the radio, every
+/// paired device, pairing, and controller options).
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum View {
+    Sound,
+    Bluetooth,
+}
+
+const PAD_FACES_FILE: &str = "Config/controllers.conf";
+
+/// Whether controllers' face buttons are read by position (east is A) instead of by label.
+pub fn pad_faces_by_position(root: &std::path::Path) -> bool {
+    std::fs::read_to_string(root.join(PAD_FACES_FILE))
+        .is_ok_and(|text| text.lines().any(|l| l.trim() == "faces=positions"))
+}
+
+fn save_pad_faces(root: &std::path::Path, by_position: bool) -> std::io::Result<()> {
+    let path = root.join(PAD_FACES_FILE);
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let tmp = path.with_extension("conf.tmp");
+    std::fs::write(&tmp, format!("faces={}\n", if by_position { "positions" } else { "labels" }))?;
+    std::fs::rename(tmp, path)
+}
+
 pub struct Manager {
     root: PathBuf,
+    pub view: View,
+    pub pad_by_position: bool,
+    pairing_pad: Option<String>,
     pub page: Page,
     stack: Vec<Page>,
     pub devices: Vec<Headphones>,
@@ -142,6 +187,9 @@ impl Manager {
             pause_on_disconnect,
             carousel_sounds: slot_store::read_slot_state(&root).carousel_sounds,
             bluetooth_available,
+            view: View::Sound,
+            pad_by_position: pad_faces_by_position(&root),
+            pairing_pad: None,
             root,
             page: Page::Home,
             stack: Vec::new(),
@@ -166,6 +214,13 @@ impl Manager {
             manager.ask("list", None);
         }
         manager
+    }
+
+    /// The Bluetooth tile's manager.
+    pub fn bluetooth(root: PathBuf, bluetooth_available: bool) -> Self {
+        let mut menu = Self::new(root, bluetooth_available);
+        menu.view = View::Bluetooth;
+        menu
     }
 
     pub fn quick_toggle(root:PathBuf)->Self {
@@ -221,6 +276,7 @@ impl Manager {
         }
         self.forget_confirmation = None;
         self.choosing_route = matches!(verb, "speaker" | "connect" | "off" | "usb" | "local");
+        self.pairing_pad = (verb == "pad").then(|| address.clone()).flatten();
         let root = self.root.clone();
         let (tx, rx) = mpsc::channel();
         self.pending = Some(rx);
@@ -236,6 +292,8 @@ impl Manager {
                 "Connecting..."
             }
             "connect" => "Pairing and connecting...",
+            "pad-scan" => "Scanning…",
+            "pad" => "Connecting controller...",
             "forget" => "Forgetting device...",
             "speaker" | "local" | "usb" => "Switching output...",
             "off" => "Turning Bluetooth off...",
@@ -297,6 +355,17 @@ impl Manager {
                     self.choosing_route = false;
                     self.output = output;
                 }
+                if let Some(address) = self.pairing_pad.take() {
+                    if !message.status.starts_with("Error:") {
+                        self.page = Page::Home;
+                        self.stack.clear();
+                        self.selected = self
+                            .device_indices()
+                            .iter()
+                            .position(|i| self.devices[*i].address == address)
+                            .map_or(0, |i| self.device_start() + i);
+                    }
+                }
                 self.status = if message.status.starts_with("Error:")
                     || message.status.starts_with("Saved Bluetooth/")
                 {
@@ -334,20 +403,28 @@ impl Manager {
         self.status.clear();
     }
 
-    fn local_row(&self) -> usize { 1 + usize::from(self.bluetooth_available) }
-    fn device_start(&self) -> usize { self.local_row() + 1 }
-    fn pair_row(&self) -> usize { self.device_start() + self.device_indices().len() + self.usb_devices.len() }
-    fn disconnect_row(&self) -> usize { self.pair_row() + usize::from(self.bluetooth_available) }
+    // Sound: Volume, local output, Bluetooth headphones, USB, then the disconnect options.
+    // Bluetooth: the switch, every paired device, Pair new device, Controller buttons.
+    fn sound(&self) -> bool { self.view == View::Sound }
+    fn local_row(&self) -> usize { 1 }
+    fn device_start(&self) -> usize { if self.sound() { self.local_row() + 1 } else { 1 } }
+    fn pair_row(&self) -> usize { self.device_start() + self.device_indices().len() + if self.sound() { self.usb_devices.len() } else { 0 } }
+    fn faces_row(&self) -> usize { self.pair_row() + 1 }
+    fn disconnect_row(&self) -> usize { self.pair_row() }
     fn pause_row(&self) -> usize { self.disconnect_row() + 1 }
     fn carousel_row(&self) -> usize { self.pause_row() + 1 }
-    pub fn slider_selected(&self)->bool {self.volume_selected() || (self.page==Page::Home && self.selected==self.disconnect_row())}
-    pub fn volume_selected(&self)->bool {self.page==Page::Home && self.selected==0}
+    pub fn slider_selected(&self)->bool {self.volume_selected() || (self.sound() && self.page==Page::Home && self.selected==self.disconnect_row())}
+    pub fn volume_selected(&self)->bool {self.sound() && self.page==Page::Home && self.selected==0}
 
     fn device_indices(&self) -> Vec<usize> {
         self.devices
             .iter()
             .enumerate()
-            .filter(|(_, d)| self.bluetooth_available && (self.page == Page::Pair || d.paired))
+            .filter(|(_, d)| {
+                self.bluetooth_available
+                    && (self.page == Page::Pair || d.paired)
+                    && (self.view == View::Bluetooth || !d.gamepad())
+            })
             .map(|(i, _)| i)
             .collect()
     }
@@ -359,6 +436,9 @@ impl Manager {
     }
 
     pub fn rows(&self) -> Vec<String> {
+        if self.view == View::Bluetooth {
+            return self.bluetooth_rows();
+        }
         match self.page {
             Page::Home => {
                 let local = if self.wired {
@@ -367,9 +447,6 @@ impl Manager {
                     "SPEAKER_DEVICE Internal speaker"
                 };
                 let mut rows = vec![format!("VOLUME {}%",self.current_volume)];
-                if self.bluetooth_available {
-                    rows.push(format!("BLUETOOTH {}", if bluetooth_enabled(&self.root) { "On" } else { "Off" }));
-                }
                 rows.push(format!(
                     "{}{}",
                     if valid_address(&self.output) || crate::usb_audio::valid_route(&self.output) {
@@ -401,9 +478,6 @@ impl Manager {
                         d.name
                     )
                 }));
-                if self.bluetooth_available {
-                    rows.push("Pair audio device".into());
-                }
                 rows.push(format!("DISCONNECT {}%", self.disconnect_volume));
                 rows.push(format!("PAUSE_DISCONNECT {}", if self.pause_on_disconnect {"On"} else {"Off"}));
                 rows.push(format!("CAROUSEL_SOUNDS {}", if self.carousel_sounds {"On"} else {"Off"}));
@@ -418,6 +492,101 @@ impl Manager {
                 );
                 rows
             }
+        }
+    }
+
+    fn bluetooth_rows(&self) -> Vec<String> {
+        let kind = |d: &Headphones| if d.gamepad() { "PAD_DEVICE" } else { "DEVICE" };
+        match self.page {
+            Page::Home => {
+                let mut rows = vec![format!(
+                    "BLUETOOTH {}",
+                    if bluetooth_enabled(&self.root) { "On" } else { "Off" }
+                )];
+                rows.extend(self.device_indices().iter().map(|i| {
+                    let d = &self.devices[*i];
+                    format!("{}{} {}", if d.connected { "ACTIVE " } else { "" }, kind(d), d.name)
+                }));
+                rows.push("Pair new device".into());
+                rows.push(format!(
+                    "PAD_FACES {}",
+                    if self.pad_by_position { "By position" } else { "By label" }
+                ));
+                rows
+            }
+            Page::Pair => {
+                let mut rows = vec!["Scan for devices".into()];
+                rows.extend(self.device_indices().iter().map(|i| {
+                    let d = &self.devices[*i];
+                    format!("{} {}", kind(d), d.name)
+                }));
+                rows
+            }
+        }
+    }
+
+    /// Pairs or reconnects a device: controllers through `pad`, everything else as audio.
+    fn connect_device(&mut self, i: usize) {
+        let device = &self.devices[i];
+        let address = device.address.clone();
+        if device.gamepad() {
+            self.ask("pad", Some(address));
+        } else {
+            self.ask("connect", Some(address));
+        }
+    }
+
+    fn toggle_pad_faces(&mut self) {
+        let value = !self.pad_by_position;
+        match save_pad_faces(&self.root, value) {
+            Ok(()) => { self.pad_by_position = value; self.status.clear(); }
+            Err(_) => self.status = "Error: Could not save controller setting".into(),
+        }
+    }
+
+    fn bluetooth_input(&mut self, action: Action) {
+        let count = self.rows().len();
+        let device = self
+            .selected
+            .checked_sub(self.device_start())
+            .and_then(|n| self.device_indices().get(n).copied());
+        let home = self.page == Page::Home;
+        match action {
+            Action::GbaDown(Btn::Up) => self.selected = (self.selected + count - 1) % count,
+            Action::GbaDown(Btn::Down) => self.selected = (self.selected + 1) % count,
+            Action::GbaDown(Btn::A | Btn::Left | Btn::Right) if home && self.selected == 0 => {
+                self.toggle_bluetooth();
+            }
+            Action::GbaDown(Btn::A | Btn::Left | Btn::Right) if home && self.selected == self.faces_row() => {
+                self.toggle_pad_faces();
+            }
+            Action::GbaDown(Btn::A | Btn::Right) if home && self.selected == self.pair_row() => {
+                self.open(Page::Pair);
+                if !bluetooth_enabled(&self.root) { self.ask("on", None); }
+            }
+            Action::GbaDown(Btn::X) if self.bluetooth_available => self.ask("diagnose", None),
+            Action::GbaDown(Btn::Y) if home => {
+                if let Some(i) = device {
+                    let address = self.devices[i].address.clone();
+                    if self.forget_confirmation.as_ref() == Some(&address) {
+                        self.ask("forget", Some(address));
+                    } else {
+                        self.forget_confirmation = Some(address);
+                        self.status.clear();
+                    }
+                }
+            }
+            Action::GbaDown(Btn::A) if home => {
+                if let Some(i) = device { self.connect_device(i); }
+            }
+            Action::GbaDown(Btn::A) => {
+                if self.selected == 0 {
+                    self.ask("pad-scan", None);
+                } else if let Some(&i) = self.device_indices().get(self.selected - 1) {
+                    self.connect_device(i);
+                }
+            }
+            _ => {}
         }
     }
 
@@ -447,6 +616,10 @@ impl Manager {
         if self.pending.is_some() {
             return false;
         }
+        if self.view == View::Bluetooth {
+            self.bluetooth_input(action);
+            return false;
+        }
         let count = self.rows().len();
         match action {
             Action::GbaDown(Btn::Up) => self.selected = (self.selected + count - 1) % count,
@@ -461,13 +634,6 @@ impl Manager {
                 if self.page == Page::Home && self.selected == self.disconnect_row() =>
             {
                 self.change_disconnect_volume(action == Action::GbaDown(Btn::Right));
-            }
-            Action::GbaDown(Btn::Left | Btn::Right)
-                if self.page == Page::Home
-                    && self.bluetooth_available
-                    && self.selected == 1 =>
-            {
-                self.toggle_bluetooth();
             }
             Action::GbaDown(Btn::X) if self.bluetooth_available => self.ask("diagnose", None),
             Action::GbaDown(Btn::Y) if self.page == Page::Home => {
@@ -485,21 +651,10 @@ impl Manager {
                     }
                 }
             }
-            Action::GbaDown(Btn::Right)
-                if self.page == Page::Home && self.bluetooth_available && self.selected == self.pair_row() =>
-            {
-                self.open(Page::Pair);
-                if !bluetooth_enabled(&self.root) { self.ask("on", None); }
-            }
             Action::GbaDown(Btn::A) => match self.page.clone() {
                 Page::Home => {
-                    if self.bluetooth_available && self.selected == 1 {
-                        self.toggle_bluetooth();
-                    } else if self.selected == self.local_row() {
+                    if self.selected == self.local_row() {
                         self.ask(if self.bluetooth_available { "speaker" } else { "local" }, None);
-                    } else if self.bluetooth_available && self.selected == self.pair_row() {
-                        self.open(Page::Pair);
-                        if !bluetooth_enabled(&self.root) { self.ask("on", None); }
                     } else if self.selected != self.disconnect_row() {
                         if let Some(n) = self.selected.checked_sub(self.device_start()) {
                             let devices = self.device_indices();
@@ -561,7 +716,7 @@ impl Manager {
 
     pub fn visible_sliders(&self)->Vec<slot_ui::MenuSlider> {
         let(_,_,first,visible)=self.scroll_info();
-        if self.page!=Page::Home {return vec![];}
+        if self.page!=Page::Home || !self.sound() {return vec![];}
         [(self.disconnect_row(),self.disconnect_volume,4),(0,self.current_volume,3)].into_iter().filter(|(row,_,_)|(first..first+visible).contains(row)).map(|(row,value,id)|slot_ui::MenuSlider{width:112.0,span:200.0,id:self.page_key()*16+id,fraction:value as f32/100.0,y:slot_ui::expressive::ROW_TOP+6.0+(row-first)as f32*slot_ui::QUICK_PITCH}).collect()
     }
 
@@ -579,9 +734,9 @@ impl Manager {
         let visible=total.min(slot_ui::QUICK_VISIBLE);
         (self.selected,total,self.selected.saturating_sub(visible/2).min(total.saturating_sub(visible)),visible)
     }
-    pub fn page_key(&self) -> u64 { 1000 + self.page.clone() as u64 }
+    pub fn page_key(&self) -> u64 { 1000 + self.page.clone() as u64 + if self.sound() { 0 } else { 10 } }
     pub fn lines(&self) -> Vec<String> {
-        let title = "";
+        let title = if self.sound() { "" } else { "Bluetooth" };
         let message = if self.forget_confirmation.is_some() {
             "CONFIRM_FORGET".to_owned()
         } else if self.recovering.load(Ordering::Relaxed) {
@@ -620,10 +775,13 @@ impl Manager {
                 row
             ));
         }
+        if !self.sound() {
+            lines.push(self.bluetooth_hint().into());
+            return lines;
+        }
         lines.push(
             if self.page == Page::Home
-                && (self.selected == self.disconnect_row() || self.selected == self.pause_row() || self.selected == self.carousel_row() || self.volume_selected()
-                    || (self.bluetooth_available && self.selected == 1))
+                && (self.selected == self.disconnect_row() || self.selected == self.pause_row() || self.selected == self.carousel_row() || self.volume_selected())
             {
                 "B Back · Change"
             } else if self.disconnect_notice && self.page == Page::Home {
@@ -644,6 +802,18 @@ impl Manager {
     }
 }
 
+impl Manager {
+    fn bluetooth_hint(&self) -> &'static str {
+        let device_rows = self.device_start()..self.device_start() + self.device_indices().len();
+        match self.page {
+            Page::Home if self.selected == 0 || self.selected == self.faces_row() => "B Back · Change",
+            Page::Home if device_rows.contains(&self.selected) => "B Back · A Connect · Y Forget",
+            Page::Pair if self.selected > 0 => "B Back · A Connect",
+            _ => "B Back · A Select",
+        }
+    }
+}
+
 impl Drop for Manager {
     fn drop(&mut self) { self.cancel_pending(); }
 }
@@ -653,7 +823,7 @@ impl Drop for Manager {
 fn run_with_recovery(verb: &str, address: Option<String>, on_recover: impl FnOnce(),
     mut run: impl FnMut(&str, Option<String>) -> ResultMessage) -> ResultMessage {
     let first = run(verb, address.clone());
-    if !first.status.starts_with("Error:") || matches!(verb, "diagnose" | "connect") { return first; }
+    if !first.status.starts_with("Error:") || matches!(verb, "diagnose" | "connect" | "pad") { return first; }
     on_recover();
     let restarted = run("restart", None);
     if restarted.status.starts_with("Error:") { return restarted; }
@@ -926,7 +1096,7 @@ fn render_face(lines: &[String], footer_ink: [u8;3], canvas:slot_ui::Canvas, swi
     let mut panel = UndoFace { rgba, w: screen_w, h: OUT_H };
     slot_ui::expressive::raster_menu_rows(&mut panel, row_top as f32, slot_ui::QUICK_PITCH, row_count as usize, if switches {selected}else{None});
     let mut rgba = panel.rgba;
-    if compact { let title=slot_ui::quick_heading_face("Sound"); let x=screen_w.saturating_sub(title.w)/2; blit(&mut rgba,&title,x,0); }
+    if compact { let title=slot_ui::quick_heading_face(lines.first().filter(|t| !t.is_empty()).map_or("Sound", |t| t.as_str())); let x=screen_w.saturating_sub(title.w)/2; blit(&mut rgba,&title,x,0); }
     for (i, line) in lines.iter().enumerate() {
         // Transient feedback belongs to the floating pill, not a second line
         // inside the card. Keep the inline destructive-action confirmation.
@@ -1004,6 +1174,7 @@ fn render_face(lines: &[String], footer_ink: [u8;3], canvas:slot_ui::Canvas, swi
             .or_else(|| label.strip_prefix("PAUSE_DISCONNECT ").map(|v| ("Pause on disconnect", v)))
             .or_else(|| label.strip_prefix("BLUETOOTH ").map(|v| ("Bluetooth", v)))
             .or_else(|| label.strip_prefix("CAROUSEL_SOUNDS ").map(|v| ("Carousel sounds", v)))
+            .or_else(|| label.strip_prefix("PAD_FACES ").map(|v| ("Controller A/B", v)))
         {
             let name = slot_ui::quick_value_face(name, highlight);
             blit(&mut rgba, &name, slot_ui::QUICK_LABEL_X as u32 - slot_ui::MENU_PAD, top);
@@ -1046,9 +1217,11 @@ fn render_face(lines: &[String], footer_ink: [u8;3], canvas:slot_ui::Canvas, swi
         let usb = label.starts_with("USB_DEVICE ");
         let wired = label.starts_with("WIRED_DEVICE ");
         let speaker = label.starts_with("SPEAKER_DEVICE ");
-        let device = usb || wired || speaker || label.starts_with("DEVICE ");
+        let pad = label.starts_with("PAD_DEVICE ");
+        let device = usb || wired || speaker || pad || label.starts_with("DEVICE ");
         let label = label
             .strip_prefix("DEVICE ")
+            .or_else(|| label.strip_prefix("PAD_DEVICE "))
             .or_else(|| label.strip_prefix("USB_DEVICE "))
             .or_else(|| label.strip_prefix("WIRED_DEVICE "))
             .or_else(|| label.strip_prefix("SPEAKER_DEVICE "))
@@ -1060,7 +1233,7 @@ fn render_face(lines: &[String], footer_ink: [u8;3], canvas:slot_ui::Canvas, swi
         } else {
             slot_ui::QUICK_LABEL_X as u32
         };
-        let disclosure = row && label == "Pair audio device";
+        let disclosure = row && (label == "Pair audio device" || label == "Pair new device");
         let label_w = label_w - if device { 36 } else if disclosure { 44 } else { 0 };
         if disclosure {
             let next = slot_ui::quick_value_face("›", highlight);
@@ -1070,6 +1243,8 @@ fn render_face(lines: &[String], footer_ink: [u8;3], canvas:slot_ui::Canvas, swi
             let icon = slot_ui::sound_device_icon(
                 if speaker {
                     slot_ui::Icon::Volume
+                } else if pad {
+                    slot_ui::Icon::Gamepad
                 } else if usb || wired {
                     slot_ui::Icon::Headphones
                 } else {
@@ -1179,6 +1354,9 @@ mod menu_tests {
     fn menu() -> Manager {
         Manager {
             root: PathBuf::new(),
+            view: View::Sound,
+            pad_by_position: false,
+            pairing_pad: None,
             bluetooth_available: true,
             disconnect_volume: 0,
             current_volume:50,
@@ -1192,6 +1370,7 @@ mod menu_tests {
                 name: "WF-C510".into(),
                 paired: true,
                 connected: false,
+                kind: String::new(),
             }],
             selected: 0,
             status: String::new(),
@@ -1216,6 +1395,7 @@ mod menu_tests {
         std::fs::write(root.path().join("Config/bluetooth-enabled"), b"").unwrap();
         for button in [Btn::A, Btn::Right] {
             let mut m = menu();
+            m.view = View::Bluetooth;
             m.root = root.path().into();
             m.selected = m.pair_row();
             m.input(Action::GbaDown(Btn::Left));
@@ -1451,10 +1631,11 @@ mod menu_tests {
     fn pair_entry_enables_bluetooth_and_toggle_has_change_hint() {
         let root = tempfile::tempdir().unwrap();
         let mut m = menu();
+        m.view = View::Bluetooth;
         m.root = root.path().to_owned();
-        m.selected = 1;
+        m.selected = 0;
         assert!(m.lines().last().unwrap().contains("Change"));
-        m.selected = m.disconnect_row() - 1;
+        m.selected = m.pair_row();
         m.input(Action::GbaDown(Btn::A));
         assert_eq!(m.page, Page::Pair);
         assert!(m.busy());
@@ -1465,13 +1646,16 @@ mod menu_tests {
     fn off_is_available_only_with_bluetooth_and_reflects_the_saved_state() {
         let root = tempfile::tempdir().unwrap();
         let mut m = menu();
+        m.view = View::Bluetooth;
         m.root = root.path().to_owned();
-        assert_eq!(m.rows().get(1).unwrap(), "BLUETOOTH Off");
+        assert_eq!(m.rows().first().unwrap(), "BLUETOOTH Off");
         std::fs::create_dir(root.path().join("Config")).unwrap();
+        std::fs::write(root.path().join("Config/bluetooth-enabled"), "").unwrap();
+        assert_eq!(m.rows().first().unwrap(), "BLUETOOTH On");
         std::fs::write(root.path().join("Config/bluetooth-off"), "").unwrap();
-        assert_eq!(m.rows().get(1).unwrap(), "BLUETOOTH Off");
-        m.bluetooth_available = false;
-        assert!(!m.rows().iter().any(|r| r.starts_with("BLUETOOTH ")));
+        assert_eq!(m.rows().first().unwrap(), "BLUETOOTH Off");
+        m.view = View::Sound;
+        assert!(!m.rows().iter().any(|r| r.starts_with("BLUETOOTH ")), "the switch lives in the Bluetooth tile");
     }
 
     #[test]
@@ -1505,6 +1689,7 @@ mod menu_tests {
     #[test]
     fn pairing_is_separate_and_back_restores_the_parent() {
         let mut m = menu();
+        m.view = View::Bluetooth;
         m.devices[0].paired = false;
         m.selected = m.pair_row();
         m.input(Action::GbaDown(Btn::A));
@@ -1520,10 +1705,8 @@ mod menu_tests {
             m.rows(),
             vec![
                 "VOLUME 50%",
-                "BLUETOOTH Off",
                 "ACTIVE SPEAKER_DEVICE Internal speaker",
                 "DEVICE WF-C510",
-                "Pair audio device",
                 "DISCONNECT 0%",
                 "PAUSE_DISCONNECT Off",
                 "CAROUSEL_SOUNDS On"
@@ -1558,6 +1741,90 @@ mod menu_tests {
         assert!(m.pending.is_some());
         assert_eq!(m.status, "Forgetting device...");
     }
+    fn pad() -> Headphones {
+        Headphones {
+            address: "11:22:33:44:55:66".into(),
+            name: "Xbox Wireless Controller".into(),
+            paired: true,
+            connected: true,
+            kind: "input-gaming".into(),
+        }
+    }
+
+    #[test]
+    fn device_kinds_come_from_the_helper_list() {
+        let devices = parse_devices("DEVICE 11:22:33:44:55:66 Xbox Wireless Controller\nSTATE 11:22:33:44:55:66 yes yes\nKIND 11:22:33:44:55:66 input-gaming\nDEVICE AA:BB:CC:DD:EE:FF WF-C510\n");
+        assert!(devices[0].gamepad() && devices[0].connected);
+        assert!(!devices[1].gamepad());
+        assert_eq!(devices[1].kind, "");
+    }
+
+    #[test]
+    fn the_bluetooth_tile_lists_every_paired_device_and_sound_only_audio() {
+        let mut m = menu();
+        m.devices.push(pad());
+        m.view = View::Bluetooth;
+        assert_eq!(
+            m.rows(),
+            vec![
+                "BLUETOOTH Off",
+                "DEVICE WF-C510",
+                "ACTIVE PAD_DEVICE Xbox Wireless Controller",
+                "Pair new device",
+                "PAD_FACES By label",
+            ]
+        );
+        assert_eq!(m.lines()[0], "Bluetooth");
+        assert!(m.visible_sliders().is_empty());
+        m.view = View::Sound;
+        assert!(!m.rows().iter().any(|r| r.contains("Xbox")), "a controller is not an output");
+    }
+
+    #[test]
+    fn a_controller_connects_through_the_pad_verb_and_headphones_as_audio() {
+        let mut m = menu();
+        m.devices.push(pad());
+        m.view = View::Bluetooth;
+        m.selected = m.device_start() + 1;
+        m.input(Action::GbaDown(Btn::A));
+        assert_eq!(m.status, "Connecting controller...");
+        assert_eq!(m.pairing_pad.as_deref(), Some("11:22:33:44:55:66"));
+        m.cancel_pending();
+        m.selected = m.device_start();
+        m.input(Action::GbaDown(Btn::A));
+        assert_eq!(m.status, "Connecting...");
+        assert!(m.pairing_pad.is_none());
+    }
+
+    #[test]
+    fn the_controller_face_option_is_saved() {
+        let root = tempfile::tempdir().unwrap();
+        let mut m = menu();
+        m.view = View::Bluetooth;
+        m.root = root.path().to_owned();
+        m.selected = m.faces_row();
+        assert!(m.lines().last().unwrap().contains("Change"));
+        m.input(Action::GbaDown(Btn::Right));
+        assert!(m.pad_by_position);
+        assert!(pad_faces_by_position(root.path()));
+        assert_eq!(m.rows()[m.faces_row()], "PAD_FACES By position");
+        m.input(Action::GbaDown(Btn::A));
+        assert!(!pad_faces_by_position(root.path()));
+    }
+
+    #[test]
+    fn controller_scans_look_for_all_kinds() {
+        let mut m = menu();
+        m.view = View::Bluetooth;
+        m.selected = m.pair_row();
+        m.input(Action::GbaDown(Btn::A));
+        m.cancel_pending();
+        assert_eq!(m.page, Page::Pair);
+        m.selected = 0;
+        m.input(Action::GbaDown(Btn::A));
+        assert_eq!(m.status, "Scanning…");
+    }
+
     #[test]
     fn active_route_not_connection_alone_controls_checkmark() {
         let mut m = menu();

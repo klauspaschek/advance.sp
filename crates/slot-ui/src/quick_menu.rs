@@ -125,6 +125,8 @@ pub enum QuickRow {
     TimeZone,
     CartStudio,
     PlayAchievements,
+    /// The Bluetooth tile: the radio, every paired device and pairing.
+    Radio,
 }
 
 impl QuickRow {
@@ -134,7 +136,7 @@ impl QuickRow {
             | Self::LeftStick | Self::GbaColourCorrection | Self::GbColourCorrection
             | Self::GbcColourCorrection | Self::ColourCorrection | Self::Recents | Self::AutomaticTime)
     }
-    pub const ALL: [QuickRow; 114] = [
+    pub const ALL: [QuickRow; 115] = [
         QuickRow::FastForward,
         QuickRow::FastForwardSound,
         QuickRow::Screen,
@@ -249,6 +251,7 @@ impl QuickRow {
         QuickRow::TimeZone,
         QuickRow::CartStudio,
         QuickRow::PlayAchievements,
+        QuickRow::Radio,
     ];
 
 
@@ -259,7 +262,7 @@ impl QuickRow {
         QuickRow::Game,
         QuickRow::Power,
         QuickRow::Controls,
-        QuickRow::Kids,
+        QuickRow::Radio,
         QuickRow::Wifi,
     ];
 
@@ -271,13 +274,14 @@ impl QuickRow {
         QuickRow::ShutDown,
     ];
 
-    pub const GENERAL: [QuickRow; 7] = [
+    pub const GENERAL: [QuickRow; 8] = [
         QuickRow::SecurityPin,
         QuickRow::Updates,
         QuickRow::AutomaticTime,
         QuickRow::TimeZone,
         QuickRow::ClockFormat,
         QuickRow::DateTime,
+        QuickRow::Kids,
         QuickRow::About,
     ];
 
@@ -442,7 +446,7 @@ impl QuickRow {
             QuickRow::Wallpaper | QuickRow::WallpaperTint | QuickRow::ShellColour
             | QuickRow::Theme | QuickRow::ShowTitles
             | QuickRow::CarouselMotion | QuickRow::Recents | QuickRow::FavoriteSort => &QuickRow::SCREEN,
-            QuickRow::About | QuickRow::ClockFormat | QuickRow::DateTime => &QuickRow::GENERAL,
+            QuickRow::About | QuickRow::ClockFormat | QuickRow::DateTime | QuickRow::Kids => &QuickRow::GENERAL,
             QuickRow::Reference | QuickRow::ControlsShelf | QuickRow::Shortcuts | QuickRow::ControlsInGame => {
                 &QuickRow::CONTROL_PAGES
             }
@@ -561,6 +565,7 @@ impl QuickRow {
         match self {
             QuickRow::Power => "Power & lid",
             QuickRow::Kids => "Parental controls",
+            QuickRow::Radio => "Bluetooth",
             QuickRow::LidClose => "Lid Close",
             QuickRow::SleepTimeout => "Shut Down After",
             QuickRow::SleepNow => "Sleep Now",
@@ -677,6 +682,7 @@ impl QuickRow {
             self,
             QuickRow::Power
                 | QuickRow::Kids
+                | QuickRow::Radio
                 | QuickRow::SleepNow
                 | QuickRow::ShutDown
                 | QuickRow::DateTime

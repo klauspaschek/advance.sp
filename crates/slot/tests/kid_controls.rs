@@ -435,9 +435,9 @@ fn raw_parent_setup_shows_settings_records_buttons_and_requires_matching_confirm
     let mut s = Session::boot(d.path().to_owned());
     let mut time = 0;
     s.app_mut().apply(Action::QuickMenu);
-    raw_tap(&mut s,&mut time,Btn::Right);
-    raw_tap(&mut s,&mut time,Btn::Right);
-    raw_tap(&mut s,&mut time,Btn::Down);
+    // Parental controls live in General, above About.
+    raw_tap(&mut s,&mut time,Btn::A);
+    for _ in 0..6 { raw_tap(&mut s,&mut time,Btn::Down); }
     assert_eq!(s.app().quick_menu(), Some(slot_ui::QuickRow::Kids));
     raw_tap(&mut s, &mut time, Btn::A);
     assert!(!s.app().kid_menu.as_ref().unwrap().entering_code());
@@ -1022,7 +1022,7 @@ fn parent_volume_slider_can_reach_zero_and_one_hundred(){
 fn enabling_kid_mode_preserves_all_parent_rows_and_closes_vertically_to_the_shelf() {
     let d=card();let mut policy=Policy::read(d.path()).unwrap();policy.leave();policy.save(d.path()).unwrap();
     let mut app=App::boot(d.path());app.apply(Action::QuickMenu);
-    for b in [Btn::Right,Btn::Right,Btn::Down,Btn::A,Btn::A,Btn::B,Btn::X,Btn::Y]{press(&mut app,b);}
+    for b in [Btn::A,Btn::Down,Btn::Down,Btn::Down,Btn::Down,Btn::Down,Btn::Down,Btn::A,Btn::A,Btn::B,Btn::X,Btn::Y]{press(&mut app,b);}
     let menu=app.kid_menu.as_ref().unwrap();assert_eq!(menu.scroll_info(),Some((0,5,0,5)));
     let sliders=menu.visible_sliders();let y=sliders[0].y;
     press(&mut app,Btn::A);assert!(app.kid_mode());
@@ -1073,7 +1073,7 @@ fn shoulder_code_roundtrips_through_raw_setup_confirmation_and_unlock() {
 fn first_kid_activation_keeps_volume_feedback_live_without_changing_the_limit() {
     let d=card();let mut policy=Policy::read(d.path()).unwrap();policy.leave();policy.save(d.path()).unwrap();
     let mut app=App::boot(d.path());app.apply(Action::QuickMenu);
-    for b in [Btn::Right,Btn::Right,Btn::Down,Btn::A,Btn::A,Btn::B,Btn::X,Btn::Y,Btn::A] {press(&mut app,b);}
+    for b in [Btn::A,Btn::Down,Btn::Down,Btn::Down,Btn::Down,Btn::Down,Btn::Down,Btn::A,Btn::A,Btn::B,Btn::X,Btn::Y,Btn::A] {press(&mut app,b);}
     assert!(app.kid_mode());assert_eq!(app.kid_volume_limit(),50);
     for action in [Action::VolumeDown,Action::VolumeUp,Action::VolumeDown] {
         let before=app.volume();app.apply(action);

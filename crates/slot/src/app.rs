@@ -352,6 +352,7 @@ pub struct App {
     catalog: Vec<Cart>,
     pub bluetooth: Option<crate::bluetooth::Manager>,
     bluetooth_supported: bool,
+    pad_faces_by_position: bool,
     pub(crate) kid_status_icon: Option<TexId>,
     pub ra_sync_indicator: Option<TexId>,
     pub wifi_connecting_indicator: Option<TexId>,
@@ -631,6 +632,7 @@ impl App {
             catalog,
             bluetooth: None,
             bluetooth_supported: false,
+            pad_faces_by_position: false,
             kid_status_icon: None,
             ra_sync_indicator: None,
             wifi_connecting_indicator: None,
@@ -870,6 +872,7 @@ impl App {
         app.display_settings = crate::display_settings::DisplaySettings::read(root, &app.state);
         (app.state.brightness, app.state.blue_light) = app.display_settings.current();
         app.power_settings = crate::power_settings::PowerSettings::read(root);
+        app.pad_faces_by_position = crate::bluetooth::pad_faces_by_position(root);
         for p in Platform::ALL { app.frame_blending[p as usize]=crate::frame_blending::read(root,p); }
         app.carousel = read_carousel(root);
         app.shortcuts = read_shortcuts(root);
@@ -1439,6 +1442,7 @@ impl App {
                 QuickValue::Dark
             }),
             QuickRow::Bluetooth
+            | QuickRow::Radio
             | QuickRow::Kids
             | QuickRow::DateTime
             | QuickRow::About
@@ -2664,6 +2668,11 @@ impl App {
         self.left_stick = present;
     }
 
+    /// Whether Bluetooth controllers' face buttons are read by position rather than label.
+    pub fn pad_faces_by_position(&self) -> bool {
+        self.pad_faces_by_position
+    }
+
     pub fn left_stick_dpad(&self) -> bool {
         self.left_stick && self.state.left_stick_dpad
     }
@@ -3113,6 +3122,7 @@ impl App {
             }
             if let Some(menu) = &mut self.bluetooth {
                 let close = menu.input(action);
+                self.pad_faces_by_position = menu.pad_by_position;
                 self.disconnect_volume = menu.disconnect_volume;
                 self.pause_on_disconnect = menu.pause_on_disconnect;
                 let changed = self.state.carousel_sounds != menu.carousel_sounds;
@@ -3394,7 +3404,7 @@ impl App {
             QuickRow::ExitGame => self.eject(),
             QuickRow::Screen => {self.in_game_menu=Some(QuickRow::PlayBrightness);},
             QuickRow::PlaySound => self.open_quick_row(QuickRow::Bluetooth),
-            QuickRow::Wifi|QuickRow::Achievements|QuickRow::PlayAchievements|QuickRow::Updates|QuickRow::SecurityPin|QuickRow::Bluetooth|QuickRow::Kids|QuickRow::DisplaySchedule|QuickRow::SleepNow|QuickRow::ShutDown => self.open_quick_row(row),
+            QuickRow::Wifi|QuickRow::Achievements|QuickRow::PlayAchievements|QuickRow::Updates|QuickRow::SecurityPin|QuickRow::Bluetooth|QuickRow::Radio|QuickRow::Kids|QuickRow::DisplaySchedule|QuickRow::SleepNow|QuickRow::ShutDown => self.open_quick_row(row),
             QuickRow::DateTime|QuickRow::TimeZone|QuickRow::About => {
                 if row == QuickRow::DateTime && self.network.as_ref().is_some_and(|m| m.automatic_time_enabled()) {
                     self.open_quick_row(row);
@@ -3460,10 +3470,13 @@ impl App {
             QuickRow::ShutDown => self.hold_power(),
             QuickRow::LidClose | QuickRow::SleepTimeout | QuickRow::AutomaticTime => {}
             QuickRow::ClockFormat | QuickRow::CarouselMotion | QuickRow::ShowTitles | QuickRow::FavoriteSort => self.change_setting(row, true),
-            QuickRow::Bluetooth => {
+            QuickRow::Bluetooth | QuickRow::Radio => {
                 if let Some(root) = &self.root {
-                    let mut menu =
-                        crate::bluetooth::Manager::new(root.clone(), self.bluetooth_supported);
+                    let mut menu = if row == QuickRow::Radio {
+                        crate::bluetooth::Manager::bluetooth(root.clone(), self.bluetooth_supported)
+                    } else {
+                        crate::bluetooth::Manager::new(root.clone(), self.bluetooth_supported)
+                    };
                     menu.wired = self.headphones;
                     menu.carousel_sounds = self.state.carousel_sounds;
                     self.bluetooth = Some(menu);
@@ -3777,6 +3790,7 @@ impl App {
             | QuickRow::Kids
             | QuickRow::DateTime
             | QuickRow::Bluetooth
+            | QuickRow::Radio
             | QuickRow::About
             | QuickRow::Wifi | QuickRow::CartStudio
             | QuickRow::Achievements | QuickRow::PlayAchievements

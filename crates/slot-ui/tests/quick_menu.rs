@@ -82,11 +82,11 @@ fn the_fast_forward_row_offers_off_a_slow_speed_and_the_four_ceilings() {
 fn the_rows_run_in_the_order_the_user_chose() {
     assert_eq!(
         QuickRow::MAIN.map(QuickRow::label),
-        ["General", "Display & appearance", "Sound", "Gameplay", "Power & lid", "Device controls", "Parental controls", "Network"]
+        ["General", "Display & appearance", "Sound", "Gameplay", "Power & lid", "Device controls", "Bluetooth", "Network"]
     );
     assert_eq!(
         QuickRow::GENERAL.map(QuickRow::label),
-        ["Device code", "Updates", "Automatic time", "Time zone", "Clock format", "Date & Time", "About"]
+        ["Device code", "Updates", "Automatic time", "Time zone", "Clock format", "Date & Time", "Parental controls", "About"]
     );
     assert_eq!(
         QuickRow::CONTROL_PAGES.map(QuickRow::label),
@@ -170,7 +170,7 @@ fn the_rows_run_in_the_order_the_user_chose() {
             QuickRow::DisplaySchedule,
             QuickRow::Wifi,
             QuickRow::Achievements,
-            QuickRow::SecurityPin, QuickRow::Updates, QuickRow::TimeZone, QuickRow::CartStudio, QuickRow::PlayAchievements
+            QuickRow::SecurityPin, QuickRow::Updates, QuickRow::TimeZone, QuickRow::CartStudio, QuickRow::PlayAchievements, QuickRow::Radio
         ]
     );
     for page in [

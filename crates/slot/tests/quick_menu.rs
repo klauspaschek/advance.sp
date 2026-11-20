@@ -217,7 +217,7 @@ fn appearance_uses_shell_and_wallpaper_without_an_unfinished_theme_selector() {
 #[test]
 fn the_main_grid_wraps_within_rows_and_columns() {
     let (_d,mut a,_)=on_carousel();a.apply(Action::QuickMenu);
-    for (button,want) in [(Btn::Up,QuickRow::Power),(Btn::Down,QuickRow::General),(Btn::Left,QuickRow::Game),(Btn::Right,QuickRow::General),(Btn::Right,QuickRow::Screen),(Btn::Down,QuickRow::Controls),(Btn::Right,QuickRow::Kids),(Btn::Right,QuickRow::Wifi),(Btn::Down,QuickRow::Game)] {
+    for (button,want) in [(Btn::Up,QuickRow::Power),(Btn::Down,QuickRow::General),(Btn::Left,QuickRow::Game),(Btn::Right,QuickRow::General),(Btn::Right,QuickRow::Screen),(Btn::Down,QuickRow::Controls),(Btn::Right,QuickRow::Radio),(Btn::Right,QuickRow::Wifi),(Btn::Down,QuickRow::Game)] {
         press(&mut a,button);assert_eq!(a.quick_menu(),Some(want));
     }
 }
@@ -1669,6 +1669,7 @@ fn general_selection_stays_live_during_about_exit_and_rapid_navigation() {
     a.update(0.06);
     press(&mut a, Btn::B);
     press(&mut a, Btn::Up);
+    press(&mut a, Btn::Up);
     a.update(0.0);
     assert_eq!(a.quick_menu(), Some(QuickRow::DateTime));
     let returning = frame(&a);
@@ -1681,6 +1682,7 @@ fn general_selection_stays_live_during_about_exit_and_rapid_navigation() {
     assert_eq!(clock_surface, returning_surface, "opening another page snapped the returning surface");
     press(&mut a, Btn::B);
     assert_eq!(a.quick_menu(), Some(QuickRow::DateTime));
+    press(&mut a, Btn::Down);
     press(&mut a, Btn::Down);
     press(&mut a, Btn::A);
     assert!(matches!(a.phase(), Phase::About));
