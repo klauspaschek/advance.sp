@@ -42,6 +42,7 @@ pub struct DeviceInput {
     actions: Vec<Action>,
     testing: bool,
     tested: Vec<(&'static str, bool)>,
+    stick_volume: [bool; 2],
     hall: Option<PathBuf>,
     lid_shut: Option<bool>,
     next_lid_poll: Millis,
@@ -85,6 +86,7 @@ impl DeviceInput {
             actions: Vec::new(),
             testing: false,
             tested: Vec::new(),
+            stick_volume: [false; 2],
             hall: find_hall(Path::new(PSY)),
             lid_shut: None,
             next_lid_poll: 0,
@@ -248,6 +250,8 @@ impl Reader {
                 PadExtra::Share(false),
                 PadExtra::Rewind(false),
                 PadExtra::FastForward(false),
+                PadExtra::VolumeUp(false),
+                PadExtra::VolumeDown(false),
             ]);
         }
     }
@@ -297,10 +301,6 @@ impl Reader {
                 if (ev.kind == EV_KEY && ev.value == 1) || (ev.kind == EV_ABS && ev.value != 0) {
                     crate::latency::read();
                 }
-                if ev.kind == EV_KEY && ev.value == 1 {
-                    let source = if self.extras.is_some() { 2 } else { 1 };
-                    self.last_source.store(source, Ordering::Relaxed);
-                }
                 if let Some(extras) = &self.extras {
                     if let Some(extra) = pad_extra(ev) {
                         lock(extras).push(extra);
@@ -333,6 +333,10 @@ impl Reader {
                     }
                     _ => events.extend(to_raw_for(self.layout, faces, ev)),
                 }
+            }
+            // who pressed last (the button checker draws that device): any press, d-pad included
+            if events.iter().any(|e| matches!(e, RawEvent::Down(b) if !matches!(b, Btn::Lid | Btn::Power))) {
+                self.last_source.store(if pad { 2 } else { 1 }, Ordering::Relaxed);
             }
             if events.is_empty() {
                 continue;
@@ -441,8 +445,19 @@ impl DeviceInput {
         std::mem::take(&mut self.tested)
     }
 
+    /// The right stick held up or down is the volume key held; it is let go only if it was
+    /// pressed, so a controller that drops cannot release a key nobody held.
+    fn stick_volume(&mut self, which: usize, key: Btn, on: bool, out: &mut Vec<RawEvent>) {
+        if on == self.stick_volume[which] {
+            return;
+        }
+        self.stick_volume[which] = on;
+        out.push(if on { RawEvent::Down(key) } else { RawEvent::Up(key) });
+    }
+
     fn pad_extras(&mut self, now: Millis, out: &mut Vec<RawEvent>) {
-        for extra in std::mem::take(&mut *lock(&self.extras)) {
+        let extras = std::mem::take(&mut *lock(&self.extras));
+        for extra in extras {
             if self.testing {
                 self.tested.push(extra.held());
                 continue;
@@ -467,13 +482,10 @@ impl DeviceInput {
                 PadExtra::LoadState(true) => self.actions.push(Action::LoadState),
                 PadExtra::Rewind(on) => self.actions.push(if on { Action::RewindStart } else { Action::RewindStop }),
                 PadExtra::FastForward(on) => self.actions.push(if on { Action::FfStart } else { Action::FfStop }),
-                PadExtra::ShaderNext(true) => self.actions.push(Action::ShaderNext),
-                PadExtra::ShaderPrev(true) => self.actions.push(Action::ShaderPrev),
-                PadExtra::SaveState(false)
-                | PadExtra::LoadState(false)
-                | PadExtra::ShaderNext(false)
-                | PadExtra::ShaderPrev(false)
-                | PadExtra::LeftStick(..) => {}
+                // held like the volume keys, so the volume repeats as they do
+                PadExtra::VolumeUp(on) => self.stick_volume(0, Btn::VolUp, on, out),
+                PadExtra::VolumeDown(on) => self.stick_volume(1, Btn::VolDown, on, out),
+                PadExtra::SaveState(false) | PadExtra::LoadState(false) | PadExtra::LeftStick(..) => {}
             }
         }
         if let Some(since) = self.share_since.filter(|_| !self.testing) {
@@ -589,5 +601,21 @@ mod checker_tests {
         lock(&input.extras).push(PadExtra::Share(false));
         assert!(input.poll(5100).is_empty(), "the press began while testing: no screenshot");
         assert!(input.take_actions().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod stick_volume_tests {
+    use super::*;
+
+    #[test]
+    fn the_right_stick_holds_the_volume_keys_and_lets_go_only_what_it_held() {
+        let d = tempfile::tempdir().unwrap();
+        let mut input = DeviceInput::open_in(&d.path().join("dev"), &d.path().join("sys"), d.path(), false);
+        lock(&input.extras).push(PadExtra::VolumeUp(true));
+        assert_eq!(input.poll(0), vec![RawEvent::Down(Btn::VolUp)]);
+        lock(&input.extras).extend([PadExtra::VolumeUp(false), PadExtra::VolumeDown(false)]);
+        assert_eq!(input.poll(10), vec![RawEvent::Up(Btn::VolUp)], "no release of a key never pressed");
+        assert!(input.take_actions().is_empty(), "no shader change any more");
     }
 }

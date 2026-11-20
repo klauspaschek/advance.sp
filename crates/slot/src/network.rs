@@ -183,6 +183,10 @@ impl Menu {
         self.wifi_on && matches!(self.last_wifi.busy,
             wifi::Busy::Starting | wifi::Busy::Joining(_) | wifi::Busy::Addressing)
     }
+    /// Wi-Fi is switched on, connected or not.
+    pub fn wifi_switched_on(&self) -> bool {
+        self.wifi_on
+    }
     pub fn wifi_connected(&self) -> bool {
         self.wifi_on && self.last_wifi.on && self.last_wifi.connected.is_some() && self.last_wifi.ip.is_some()
     }

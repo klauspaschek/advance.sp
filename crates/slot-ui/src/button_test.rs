@@ -101,10 +101,11 @@ fn handheld(style: &Style, held: &dyn Fn(&str) -> bool, ink: [u8; 3]) -> (String
         hex(ink, 0.18)
     );
     let mut parts = vec![
-        rect(style, held("L2"), 36.0, 4.0, 72.0, 26.0, 9.0, Some("L2")),
-        rect(style, held("L1"), 116.0, 4.0, 72.0, 26.0, 9.0, Some("L1")),
-        rect(style, held("R1"), 412.0, 4.0, 72.0, 26.0, 9.0, Some("R1")),
-        rect(style, held("R2"), 492.0, 4.0, 72.0, 26.0, 9.0, Some("R2")),
+        // as on the RG SP: L1 and R1 at the corners, L2 and R2 inside them
+        rect(style, held("L1"), 36.0, 4.0, 72.0, 26.0, 9.0, Some("L1")),
+        rect(style, held("L2"), 116.0, 4.0, 72.0, 26.0, 9.0, Some("L2")),
+        rect(style, held("R2"), 412.0, 4.0, 72.0, 26.0, 9.0, Some("R2")),
+        rect(style, held("R1"), 492.0, 4.0, 72.0, 26.0, 9.0, Some("R1")),
         rect(style, held("Vol+"), 6.0, 96.0, 12.0, 36.0, 5.0, None),
         rect(style, held("Vol-"), 6.0, 140.0, 12.0, 36.0, 5.0, None),
         caption("+", 36.0, 114.0, 18.0),
@@ -114,11 +115,27 @@ fn handheld(style: &Style, held: &dyn Fn(&str) -> bool, ink: [u8; 3]) -> (String
     for (name, cx, cy) in [("X", 470.0, 98.0), ("A", 512.0, 140.0), ("B", 470.0, 182.0), ("Y", 428.0, 140.0)] {
         parts.push(circle(style, held(name), cx, cy, 20.0, Some(name)));
     }
-    parts.push(rect(style, held("Select"), 200.0, 222.0, 64.0, 20.0, 10.0, Some("SELECT")));
-    parts.push(circle(style, held("Menu"), 300.0, 232.0, 13.0, None));
-    parts.push(caption("MENU", 300.0, 206.0, 12.0));
-    parts.push(rect(style, held("Start"), 336.0, 222.0, 64.0, 20.0, 10.0, Some("START")));
+    parts.push(circle(style, held("Menu"), 300.0, 70.0, 12.0, None));
+    parts.push(caption("MENU", 300.0, 95.0, 12.0));
+    parts.push(caption("SELECT", 262.0, 212.0, 12.0));
+    parts.push(circle(style, held("Select"), 262.0, 236.0, 11.0, None));
+    parts.push(caption("START", 338.0, 212.0, 12.0));
+    parts.push(circle(style, held("Start"), 338.0, 236.0, 11.0, None));
     (body, parts)
+}
+
+/// The Xbox button, after the Xbox logo: a disc crossed by two curved strokes.
+fn xbox_button(style: &Style, lit: bool, cx: f32, cy: f32, ink: [u8; 3]) -> Part {
+    let cross = if lit { "#ffffff".to_owned() } else { hex(ink, 0.75) };
+    Part {
+        svg: format!(
+            r#"<circle cx="{cx}" cy="{cy}" r="16" stroke-width="2" {}/><path d="M{} {} Q{cx} {} {} {} M{} {} Q{cx} {} {} {}" fill="none" stroke="{cross}" stroke-width="3.2" stroke-linecap="round"/>"#,
+            style.fill(lit),
+            cx - 8.5, cy - 10.0, cy + 1.0, cx + 8.5, cy + 10.0,
+            cx + 8.5, cy - 10.0, cy + 1.0, cx - 8.5, cy + 10.0,
+        ),
+        label: None,
+    }
 }
 
 fn xbox(style: &Style, held: &dyn Fn(&str) -> bool, nintendo: bool, ink: [u8; 3]) -> (String, Vec<Part>) {
@@ -128,10 +145,11 @@ fn xbox(style: &Style, held: &dyn Fn(&str) -> bool, nintendo: bool, ink: [u8; 3]
         hex(ink, 0.35)
     );
     let mut parts = vec![
-        rect(style, held("L2"), 130.0, 2.0, 72.0, 24.0, 9.0, Some("LT")),
-        rect(style, held("R2"), 398.0, 2.0, 72.0, 24.0, 9.0, Some("RT")),
-        rect(style, held("L1"), 104.0, 32.0, 120.0, 22.0, 11.0, Some("LB")),
-        rect(style, held("R1"), 376.0, 32.0, 120.0, 22.0, 11.0, Some("RB")),
+        // named as the RG SP's: LT is L2, LB is L1
+        rect(style, held("L2"), 130.0, 2.0, 72.0, 24.0, 9.0, Some("L2")),
+        rect(style, held("R2"), 398.0, 2.0, 72.0, 24.0, 9.0, Some("R2")),
+        rect(style, held("L1"), 104.0, 32.0, 120.0, 22.0, 11.0, Some("L1")),
+        rect(style, held("R1"), 376.0, 32.0, 120.0, 22.0, 11.0, Some("R1")),
     ];
     parts.extend(stick(style, held, "LS", "L3", 165.0, 118.0));
     parts.extend(dpad(style, held, 232.0, 178.0, 22.0));
@@ -145,13 +163,15 @@ fn xbox(style: &Style, held: &dyn Fn(&str) -> bool, nintendo: bool, ink: [u8; 3]
     ] {
         parts.push(circle(style, held(if nintendo { nin } else { lab }), cx, cy, 15.0, Some(label)));
     }
-    parts.push(circle(style, held("Select"), 262.0, 116.0, 10.0, None));
-    parts.push(caption("View", 262.0, 98.0, 12.0));
-    parts.push(circle(style, held("Start"), 338.0, 116.0, 10.0, None));
-    parts.push(caption("Menu", 338.0, 98.0, 12.0));
-    parts.push(circle(style, held("Menu"), 300.0, 84.0, 16.0, None));
-    parts.push(rect(style, held("Share"), 286.0, 136.0, 28.0, 13.0, 6.5, None));
-    parts.push(caption("Share", 300.0, 160.0, 12.0));
+    // View is Select and Menu is Start, the Xbox button is MENU
+    parts.push(circle(style, held("Select"), 256.0, 120.0, 10.0, None));
+    parts.push(caption("Select", 256.0, 102.0, 12.0));
+    parts.push(circle(style, held("Start"), 344.0, 120.0, 10.0, None));
+    parts.push(caption("Start", 344.0, 102.0, 12.0));
+    parts.push(xbox_button(style, held("Menu"), 300.0, 84.0, ink));
+    parts.push(caption("Menu", 300.0, 113.0, 12.0));
+    parts.push(rect(style, held("Share"), 288.0, 132.0, 24.0, 12.0, 6.0, None));
+    parts.push(caption("Share", 300.0, 154.0, 11.0));
     (body, parts)
 }
 

@@ -318,9 +318,9 @@ fn the_right_stick_rewinds_fast_forwards_and_changes_the_shader() {
         Some(vec![PadExtra::FastForward(false), PadExtra::Rewind(true)])
     );
     assert_eq!(axes.right_stick(abs(ABS_Z, 32768)), Some(vec![PadExtra::Rewind(false)]));
-    assert_eq!(axes.right_stick(abs(ABS_RZ, 0)), Some(vec![PadExtra::ShaderNext(true)]), "up");
-    assert_eq!(axes.right_stick(abs(ABS_RZ, 32768)), Some(vec![PadExtra::ShaderNext(false)]));
-    assert_eq!(axes.right_stick(abs(ABS_RZ, 65535)), Some(vec![PadExtra::ShaderPrev(true)]), "down");
+    assert_eq!(axes.right_stick(abs(ABS_RZ, 0)), Some(vec![PadExtra::VolumeUp(true)]), "up");
+    assert_eq!(axes.right_stick(abs(ABS_RZ, 32768)), Some(vec![PadExtra::VolumeUp(false)]));
+    assert_eq!(axes.right_stick(abs(ABS_RZ, 65535)), Some(vec![PadExtra::VolumeDown(true)]), "down");
 }
 
 #[test]

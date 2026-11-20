@@ -66,6 +66,8 @@ const BLANK_WARM_S: f32 = 1.5;
 const BLANK_DIM: f32 = 0.1;
 
 const VOLUME_STEP: u8 = 5;
+/// A radio switched on but idle: its status icon is drawn at this opacity.
+const IDLE_RADIO_ALPHA: f32 = 0.45;
 
 const AUTOSAVE_MS: Millis = 60_000;
 const RESUME_MS: Millis = 300_000;
@@ -361,6 +363,14 @@ pub struct App {
     pub hud_wifi_connecting_indicator: Option<TexId>,
     pub wifi_indicator: Option<TexId>,
     pub hud_wifi_indicator: Option<TexId>,
+    /// Wi-Fi is on but not connected: its icon is drawn dimmed.
+    pub wifi_idle: bool,
+    /// The Bluetooth rune, while Bluetooth is switched on; dimmed while nothing is connected.
+    pub radio_indicator: Option<TexId>,
+    /// A controller is connected.
+    pub pad_indicator: Option<TexId>,
+    radio_on: bool,
+    radio_checked_at: u64,
     pub audio_indicator: Option<TexId>,
     pub hud_audio_indicator: Option<TexId>,
     pub mute_indicator: Option<TexId>,
@@ -642,6 +652,11 @@ impl App {
             hud_wifi_connecting_indicator: None,
             wifi_indicator: None,
             hud_wifi_indicator: None,
+            wifi_idle: false,
+            radio_indicator: None,
+            pad_indicator: None,
+            radio_on: false,
+            radio_checked_at: 0,
             audio_indicator: None,
             hud_audio_indicator: None,
             mute_indicator: None,
@@ -2674,7 +2689,21 @@ impl App {
         self.left_stick = present;
     }
 
-    /// Whether the button checker (Bluetooth → Test buttons) is open and awake.
+    /// Whether Bluetooth is switched on (checked once a second: it is a file on the card).
+    pub fn bluetooth_radio_on(&mut self) -> bool {
+        let now = self.now();
+        if now >= self.radio_checked_at {
+            self.radio_checked_at = now + 1000;
+            self.radio_on = self.root.as_deref().is_some_and(crate::bluetooth::bluetooth_enabled);
+        }
+        self.radio_on
+    }
+
+    pub fn controllers_connected(&self) -> bool {
+        self.controllers
+    }
+
+    /// Whether the button checker (General → Test buttons) is open and awake.
     pub fn testing_buttons(&self) -> bool {
         self.bluetooth.as_ref().is_some_and(|m| m.testing()) && !matches!(self.phase, Phase::Doze { .. })
     }
@@ -4408,7 +4437,10 @@ impl App {
         let rect=self.picker().map(|p|p.field_rect(self.canvas()));self.clock_motion.update(rect,dt);
         let status_key = u8::from(self.bluetooth_active() || self.wired_audio_active() || self.usb_active)
             | (u8::from(self.muted() || self.volume() == 0) << 1)
-            | (u8::from(self.kids.active)<<2);
+            | (u8::from(self.kids.active)<<2)
+            | (u8::from(self.radio_indicator.is_some())<<3)
+            | (u8::from(self.controllers)<<4)
+            | (u8::from(self.wifi_indicator.is_some())<<5);
         self.status_motion.update(status_key, dt);
     }
 
@@ -5913,11 +5945,23 @@ impl App {
             out,
         );
         let mut preceding=out[audio_start..].iter().filter(|d|matches!(d,Draw::Tex{..})).count();
+        let mut dimmed=Vec::new();
         if let Some(atlas) = if in_game {self.hud_wifi_connecting_indicator} else {self.wifi_connecting_indicator} {
             slot_ui::draw_corner_wifi_connecting(self.canvas(), self.battery, self.battery_percent,
                 atlas, preceding, self.now(), out);
             preceding += 1;
         } else if let Some(tex)=if in_game {self.hud_wifi_indicator}else{self.wifi_indicator} {
+            slot_ui::draw_corner_indicator(self.canvas(),self.battery,self.battery_percent,tex,preceding,out);
+            // switched on, not connected: a reminder it is drawing power, dimmed
+            if self.wifi_idle {dimmed.push(tex);}
+            preceding += 1;
+        }
+        if let Some(tex)=self.radio_indicator {
+            slot_ui::draw_corner_indicator(self.canvas(),self.battery,self.battery_percent,tex,preceding,out);
+            if !(self.bluetooth_active() || self.controllers) {dimmed.push(tex);}
+            preceding += 1;
+        }
+        if let Some(tex)=self.pad_indicator.filter(|_|self.controllers) {
             slot_ui::draw_corner_indicator(self.canvas(),self.battery,self.battery_percent,tex,preceding,out);
             preceding += 1;
         }
@@ -5931,6 +5975,9 @@ impl App {
             }
         }
         self.status_motion.apply(&mut out[audio_start..]);
+        for draw in &mut out[audio_start..] {
+            if let Draw::Tex{tex,alpha,..}=draw {if dimmed.contains(tex) {*alpha*=IDLE_RADIO_ALPHA;}}
+        }
         if let Some(activity)=self.ra_sync_indicator {
             // Keep activity visible throughout a slow, continuous three-second breath.
             let phase=(self.now()%3000) as f32/3000.0*std::f32::consts::TAU;
@@ -8042,6 +8089,21 @@ mod bluetooth_tests {
         app.phase=Phase::QuickMenu{row:QuickRow::SleepNow};
         app.quick_menu_input(QuickRow::SleepNow,Action::GbaDown(Btn::Right));
         assert!(matches!(app.phase,Phase::QuickMenu{row:QuickRow::SleepNow}));
+    }
+
+    #[test]
+    fn idle_radios_are_dimmed_and_a_controller_shows_its_own_icon() {
+        let mut app=App::new(vec![]);
+        let (wifi,radio,pad)=(TexId::from_raw(901),TexId::from_raw(902),TexId::from_raw(903));
+        app.wifi_indicator=Some(wifi);app.wifi_idle=true;app.radio_indicator=Some(radio);app.pad_indicator=Some(pad);
+        let alpha=|app:&App,t:TexId|{let mut d=Vec::new();app.draw_status_bar(&mut d);d.into_iter().find_map(|d|match d {Draw::Tex{tex,alpha,..} if tex==t=>Some(alpha),_=>None})};
+        assert!(alpha(&app,wifi).unwrap()<0.5,"Wi-Fi on but not connected is dimmed");
+        assert!(alpha(&app,radio).unwrap()<0.5,"Bluetooth on with nothing connected is dimmed");
+        assert_eq!(alpha(&app,pad),None,"no controller, no controller icon");
+        app.wifi_idle=false;app.controllers=true;
+        assert!(alpha(&app,wifi).unwrap()>0.9);
+        assert!(alpha(&app,radio).unwrap()>0.9,"a connected controller lights the rune");
+        assert!(alpha(&app,pad).unwrap()>0.9);
     }
 
     #[test]

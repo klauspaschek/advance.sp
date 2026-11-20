@@ -45,7 +45,7 @@ The controller reconnects by itself whenever Bluetooth is on, and can join or le
 | Share, hold | The power button: let go to sleep, keep holding to save and power off |
 | L3 / R3 (sticks pressed in) | Save state / load state (both can be undone from the game menu) |
 | Right stick ← / → | Hold to rewind / fast-forward |
-| Right stick ↑ / ↓ | Next / previous shader |
+| Right stick ↑ / ↓ | Volume up / down (held, it repeats like the volume keys) |
 
 Turning the controller on while the RG SP is in light sleep wakes the handheld, as a console does. A deep-sleeping or powered-off RG SP can only be woken by its own power button.
 

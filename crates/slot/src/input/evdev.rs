@@ -301,10 +301,10 @@ pub enum PadExtra {
     Rewind(bool),
     /// The right stick held right (true) or let go (false).
     FastForward(bool),
-    /// The right stick pushed up (next shader) or let go.
-    ShaderNext(bool),
-    /// The right stick pushed down (previous shader) or let go.
-    ShaderPrev(bool),
+    /// The right stick held up (volume up, repeating like the volume key) or let go.
+    VolumeUp(bool),
+    /// The right stick held down (volume down) or let go.
+    VolumeDown(bool),
     /// The left stick pushed one way (0 left, 1 right, 2 up, 3 down) or let go: it steers the
     /// d-pad anyway, this is for the button checker only.
     LeftStick(u8, bool),
@@ -319,8 +319,8 @@ impl PadExtra {
             PadExtra::LoadState(on) => ("R3", on),
             PadExtra::Rewind(on) => ("R←", on),
             PadExtra::FastForward(on) => ("R→", on),
-            PadExtra::ShaderNext(on) => ("R↑", on),
-            PadExtra::ShaderPrev(on) => ("R↓", on),
+            PadExtra::VolumeUp(on) => ("R↑", on),
+            PadExtra::VolumeDown(on) => ("R↓", on),
             PadExtra::LeftStick(dir, on) => (["L←", "L→", "L↑", "L↓"][usize::from(dir.min(3))], on),
         }
     }
@@ -410,7 +410,7 @@ const RIGHT_LET_GO: i32 = 1024;
 
 /// An external pad's axes: the left stick and the hat steer the d-pad, an analog trigger past
 /// half its travel presses L2 or R2, and the right stick is a set of shortcuts (rewind and
-/// fast-forward across, the shader up and down).
+/// fast-forward across, the volume up and down).
 pub struct PadAxes {
     stick: [Range; 2],
     trigger_codes: [u16; 2],
@@ -498,13 +498,13 @@ impl PadAxes {
         } else {
             // up is negative
             match held {
-                -1 => out.push(PadExtra::ShaderNext(false)),
-                1 => out.push(PadExtra::ShaderPrev(false)),
+                -1 => out.push(PadExtra::VolumeUp(false)),
+                1 => out.push(PadExtra::VolumeDown(false)),
                 _ => {}
             }
             match now {
-                -1 => out.push(PadExtra::ShaderNext(true)),
-                1 => out.push(PadExtra::ShaderPrev(true)),
+                -1 => out.push(PadExtra::VolumeUp(true)),
+                1 => out.push(PadExtra::VolumeDown(true)),
                 _ => {}
             }
         }
