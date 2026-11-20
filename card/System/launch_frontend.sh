@@ -51,6 +51,20 @@ echo "|/bin/sh $SYS/coresave.sh %p %s %e %t" > /proc/sys/kernel/core_pattern 2>/
 
 [ -f "$RUN/slotlink.session" ] && sh "$SYS/slotlink.sh" link down > /dev/null 2>&1
 
+# The output follows the HDMI cable, the TV with one in and the LCD without. It is switched here,
+# before slot exists, as the GPU driver latches the framebuffer's size when slot starts; slot
+# saves and ends itself when the cable changes, and comes back here. Without a cable and on
+# the LCD already, this does nothing.
+if [ -f "$SYS/hdmi.sh" ]; then
+	sh "$SYS/hdmi.sh" sync > /dev/null 2>&1
+	if sh "$SYS/hdmi.sh" active; then
+		log "output hdmi"
+		# slot draws the panel's own size; the TV's mode must not be taken for it
+		vs="$(cat /sys/class/graphics/fb0/virtual_size 2>/dev/null)"
+		[ -n "$vs" ] && export SLOT_FB_SIZE="${vs%,*}x$((${vs#*,} / 2))"
+	fi
+fi
+
 [ -f "$LOGS/slot.log" ] && mv -f "$LOGS/slot.log" "$LOGS/slot.log.1"
 log "exec $SYS/slot"
 

@@ -659,6 +659,7 @@ automatic && { [ ! -f "$PREF" ] || [ -f "$OFF" ]; } && { rm -f "$SESSION_LOG"; e
 # Read-only operations use their own scratch directory and never hold the radio lock.
 case "$VERB" in
     connect|forget|fallback|pad) valid_mac "$TARGET" || fail 'Invalid Bluetooth address';;
+    speaker) [ -z "$TARGET" ] || [ "$TARGET" = hdmi ] || fail 'Invalid output';;
     usb) printf '%s\n' "$TARGET" | grep -Eq '^plughw:CARD=[A-Za-z0-9_]{1,32},DEV=[0-9]{1,3}$' || fail 'Invalid USB audio output';;
 esac
 case "$VERB" in
@@ -787,7 +788,8 @@ case "$VERB" in
         ;;
     speaker)
         STAGE='speaker selection'
-        route ''
+        # `speaker hdmi` chooses the TV's sound (HDMI) instead of the handheld's own
+        if [ "$TARGET" = hdmi ]; then route 'plughw:CARD=ahubhdmi,DEV=0'; else route ''; fi
         if [ -f "$PREF" ]; then
             TARGET=$(cat "$PREF")
             if valid_mac "$TARGET"; then bt disconnect "$TARGET" >/dev/null || true; fi

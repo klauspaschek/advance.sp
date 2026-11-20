@@ -85,6 +85,8 @@ pub fn run() {
     frontend.enable_boot_intro(&mut compositor);
     slot::boot_time::mark("bezel");
     let mut input = DeviceInput::open(&root);
+    let mut hotplug = slot::hdmi::Hotplug::default();
+    let started = Instant::now();
     slot::boot_time::mark("input");
     let card = root.clone();
     let _ = std::thread::Builder::new()
@@ -119,6 +121,11 @@ pub fn run() {
         // a controller turned on while the handheld sleeps lightly wakes it, as on a console
         if input.take_pad_arrival() && frontend.dozing() {
             input.press_power();
+        }
+        // a cable in or out of the HDMI port: save, end, and let BaseOS start slot on the other
+        // output (launch_frontend.sh switches it first)
+        if hotplug.poll(started.elapsed().as_millis() as u64) && frontend.leave_for_cable() {
+            return;
         }
         if frontend.restarting() {
             frontend.restart();

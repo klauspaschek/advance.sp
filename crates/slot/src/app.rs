@@ -353,6 +353,8 @@ pub struct App {
     pub bluetooth: Option<crate::bluetooth::Manager>,
     bluetooth_supported: bool,
     pad_faces_by_position: bool,
+    /// The HDMI transmitter has the output (checked at start: the cable restarts slot).
+    on_tv: bool,
     pub(crate) kid_status_icon: Option<TexId>,
     pub ra_sync_indicator: Option<TexId>,
     pub wifi_connecting_indicator: Option<TexId>,
@@ -633,6 +635,7 @@ impl App {
             bluetooth: None,
             bluetooth_supported: false,
             pad_faces_by_position: true,
+            on_tv: false,
             kid_status_icon: None,
             ra_sync_indicator: None,
             wifi_connecting_indicator: None,
@@ -873,6 +876,7 @@ impl App {
         (app.state.brightness, app.state.blue_light) = app.display_settings.current();
         app.power_settings = crate::power_settings::PowerSettings::read(root);
         app.pad_faces_by_position = crate::bluetooth::pad_faces_by_position(root);
+        app.on_tv = crate::hdmi::active();
         for p in Platform::ALL { app.frame_blending[p as usize]=crate::frame_blending::read(root,p); }
         app.carousel = read_carousel(root);
         app.shortcuts = read_shortcuts(root);
@@ -2668,6 +2672,39 @@ impl App {
         self.left_stick = present;
     }
 
+    /// Whether slot is showing on a TV through HDMI.
+    pub fn on_tv(&self) -> bool {
+        self.on_tv
+    }
+
+    /// A cable went into the HDMI port or out of it: the game is saved where it stands, so that
+    /// slot can end and BaseOS start it again on the other output, back in the same game.
+    /// Returns false while that would cut a link session short, or when slot already restarted
+    /// for a cable less than half a minute ago (an output hdmi.sh could not switch would loop).
+    pub fn leave_for_cable(&mut self) -> bool {
+        if self.link_active() || self.shutting_down() {
+            return false;
+        }
+        let marker = std::path::Path::new("/run/slot-hdmi-restart");
+        let recent = std::fs::metadata(marker)
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|at| at.elapsed().ok())
+            .is_some_and(|ago| ago < std::time::Duration::from_secs(30));
+        if recent {
+            return false;
+        }
+        let _ = std::fs::write(marker, "");
+        eprintln!("slot: hdmi: the cable changed, starting again on the other output");
+        if let Some(menu) = &mut self.network { menu.set_sharing_allowed(false); }
+        self.close_game_menu();
+        self.remember_shelf();
+        self.flush_resume();
+        self.settle_saves();
+        self.persist();
+        true
+    }
+
     /// Whether the button checker (Bluetooth → Test buttons) is open and awake.
     pub fn testing_buttons(&self) -> bool {
         self.bluetooth.as_ref().is_some_and(|m| m.testing()) && !matches!(self.phase, Phase::Doze { .. })
@@ -3497,6 +3534,7 @@ impl App {
                         crate::bluetooth::Manager::new(root.clone(), self.bluetooth_supported)
                     };
                     menu.wired = self.headphones;
+                    menu.tv = self.on_tv;
                     menu.carousel_sounds = self.state.carousel_sounds;
                     self.bluetooth = Some(menu);
                 }
@@ -6638,6 +6676,10 @@ impl App {
     }
 
     fn lid_close(&mut self) {
+        // on the TV the lid is shut to get it out of the way: keep playing
+        if self.on_tv {
+            return;
+        }
         match self.power_settings.lid_close {
             2 => {
                 self.flush_resume();

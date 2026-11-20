@@ -764,5 +764,16 @@ esac
         self.assertEqual((self.root / 'calls').read_text().count('session pair ' + MAC), 3)
         self.assertFalse((self.root / 'Config/bluetooth-pads').exists())
 
+    def test_speaker_hdmi_routes_the_sound_to_the_tv(self):
+        self.assertEqual(self.run_command('connect', MAC).returncode, 0)
+        result = self.run_command('speaker', 'hdmi')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.root / 'route').read_text().strip(), 'plughw:CARD=ahubhdmi,DEV=0')
+        self.assertFalse((self.root / 'Config/bluetooth-headphones').exists())
+        self.assertIn('OUTPUT plughw:CARD=ahubhdmi,DEV=0', result.stdout)
+
+    def test_speaker_refuses_any_other_target(self):
+        self.assertNotEqual(self.run_command('speaker', 'plughw:CARD=x,DEV=0').returncode, 0)
+
 if __name__ == '__main__':
     unittest.main()

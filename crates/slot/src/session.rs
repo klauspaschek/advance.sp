@@ -413,7 +413,8 @@ impl Session {
             }
             let route = std::fs::read_to_string(crate::usb_audio::route_path()).unwrap_or_default();
             let route = route.trim();
-            let selected = crate::usb_audio::valid_route(route);
+            // the TV's HDMI sound is no USB device, present or gone
+            let selected = crate::usb_audio::valid_route(route) && !crate::hdmi::is_hdmi_route(route);
             let present = self.usb_monitor.devices.iter().any(|d| d.route == route);
             self.app
                 .usb_state(selected && present, selected && !present);
@@ -453,7 +454,7 @@ impl Session {
             .and_then(|menu| menu.route_choice.take())
             .or(automatic_choice)
         {
-            let usb = crate::usb_audio::valid_route(&output);
+            let usb = crate::usb_audio::valid_route(&output) && !crate::hdmi::is_hdmi_route(&output);
             let address = crate::bluetooth::valid_address(&output).then_some(output);
             self.bluetooth_monitor.select(address.clone());
             self.app.bluetooth_state(address.clone(), address.is_some());

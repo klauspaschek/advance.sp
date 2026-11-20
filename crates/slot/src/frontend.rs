@@ -1117,6 +1117,16 @@ impl Frontend {
         self.session.pad_action(action);
     }
 
+    /// The HDMI cable changed: saves the game and stops the sound, and says whether slot may
+    /// now end to start again on the other output.
+    pub fn leave_for_cable(&mut self) -> bool {
+        if !self.session.app_mut().leave_for_cable() {
+            return false;
+        }
+        self.session.prepare_poweroff();
+        true
+    }
+
     /// A controller's extra button seen by the button checker.
     pub fn test_extra(&mut self, name: &str, down: bool) {
         self.session.app_mut().test_extra(name, down);

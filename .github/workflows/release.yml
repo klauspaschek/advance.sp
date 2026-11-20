@@ -116,6 +116,7 @@ jobs:
           python3 card/test-ota-recovery.py
           sh card/test-update.sh
           sh card/test-launch.sh
+          sh card/test-hdmi.sh
 
       - uses: actions/upload-artifact@v7
         with:

@@ -205,6 +205,8 @@ pub struct Manager {
     pub face: Option<TexId>,
     pub progress_face: Option<TexId>,
     pub wired: bool,
+    /// slot is on a TV through HDMI: Sound offers the TV's speakers.
+    pub tv: bool,
     pub bluetooth_available: bool,
     pub disconnect_volume: u8,
     pub current_volume: u8,
@@ -263,6 +265,7 @@ impl Manager {
             face: None,
             progress_face: None,
             wired: false,
+            tv: false,
             disconnect_notice: false,
             route_choice: None,
             choosing_route: false,
@@ -408,6 +411,7 @@ impl Manager {
                                     .position(|d| d.route == output)
                                     .map(|i| self.device_start() + self.device_indices().len() + i)
                             })
+                            .or_else(|| self.tv_row().filter(|_| crate::hdmi::is_hdmi_route(&output)))
                             .unwrap_or(self.local_row());
                     }
                     self.choosing_route = false;
@@ -465,7 +469,8 @@ impl Manager {
     // Bluetooth: the switch, every paired device, Pair new device, Controller buttons.
     fn sound(&self) -> bool { self.view == View::Sound }
     fn local_row(&self) -> usize { 1 }
-    fn device_start(&self) -> usize { if self.sound() { self.local_row() + 1 } else { 1 } }
+    fn tv_row(&self) -> Option<usize> { (self.sound() && self.tv).then(|| self.local_row() + 1) }
+    fn device_start(&self) -> usize { if self.sound() { self.local_row() + 1 + usize::from(self.tv) } else { 1 } }
     fn pair_row(&self) -> usize { self.device_start() + self.device_indices().len() + if self.sound() { self.usb_devices.len() } else { 0 } }
     fn faces_row(&self) -> usize { self.pair_row() + 1 }
     fn test_row(&self) -> usize { self.faces_row() + 1 }
@@ -515,6 +520,12 @@ impl Manager {
                     },
                     local
                 ));
+                if self.tv {
+                    rows.push(format!(
+                        "{}HDMI_DEVICE TV (HDMI)",
+                        if crate::hdmi::is_hdmi_route(&self.output) { "ACTIVE " } else { "" }
+                    ));
+                }
                 rows.extend(self.device_indices().iter().map(|i| {
                     format!(
                         "{}DEVICE {}",
@@ -657,6 +668,24 @@ impl Manager {
         }
     }
 
+    /// The TV's speakers, through HDMI: headphones are let go as for the internal speaker.
+    fn choose_tv(&mut self) {
+        if crate::hdmi::is_hdmi_route(&self.output) {
+            return;
+        }
+        if self.bluetooth_available {
+            self.ask("speaker", Some("hdmi".into()));
+        } else {
+            match crate::usb_audio::write_route(crate::hdmi::HDMI_ROUTE) {
+                Ok(()) => {
+                    self.output = crate::hdmi::HDMI_ROUTE.into();
+                    self.route_choice = Some(self.output.clone());
+                }
+                Err(_) => self.status = "Error: Could not save the output".into(),
+            }
+        }
+    }
+
     fn toggle_pad_faces(&mut self) {
         let value = !self.pad_by_position;
         match save_pad_faces(&self.root, value) {
@@ -783,6 +812,8 @@ impl Manager {
                 Page::Home => {
                     if self.selected == self.local_row() {
                         self.ask(if self.bluetooth_available { "speaker" } else { "local" }, None);
+                    } else if Some(self.selected) == self.tv_row() {
+                        self.choose_tv();
                     } else if self.selected != self.disconnect_row() {
                         if let Some(n) = self.selected.checked_sub(self.device_start()) {
                             let devices = self.device_indices();
@@ -1363,10 +1394,12 @@ fn render_face(lines: &[String], footer_ink: [u8;3], canvas:slot_ui::Canvas, swi
         let wired = label.starts_with("WIRED_DEVICE ");
         let speaker = label.starts_with("SPEAKER_DEVICE ");
         let pad = label.starts_with("PAD_DEVICE ");
-        let device = usb || wired || speaker || pad || label.starts_with("DEVICE ");
+        let tv = label.starts_with("HDMI_DEVICE ");
+        let device = usb || wired || speaker || pad || tv || label.starts_with("DEVICE ");
         let label = label
             .strip_prefix("DEVICE ")
             .or_else(|| label.strip_prefix("PAD_DEVICE "))
+            .or_else(|| label.strip_prefix("HDMI_DEVICE "))
             .or_else(|| label.strip_prefix("USB_DEVICE "))
             .or_else(|| label.strip_prefix("WIRED_DEVICE "))
             .or_else(|| label.strip_prefix("SPEAKER_DEVICE "))
@@ -1386,7 +1419,7 @@ fn render_face(lines: &[String], footer_ink: [u8;3], canvas:slot_ui::Canvas, swi
         }
         if device {
             let icon = slot_ui::sound_device_icon(
-                if speaker {
+                if speaker || tv {
                     slot_ui::Icon::Volume
                 } else if pad {
                     slot_ui::Icon::Gamepad
@@ -1530,11 +1563,29 @@ mod menu_tests {
             face: None,
             progress_face: None,
             wired: false,
+            tv: false,
             disconnect_notice: false,
             route_choice: None,
             choosing_route: false,
             forget_confirmation: None,
         }
+    }
+
+    #[test]
+    fn on_a_tv_sound_offers_its_speakers_after_the_handhelds() {
+        let mut m = menu();
+        m.tv = true;
+        assert_eq!(&m.rows()[..4], &["VOLUME 50%", "ACTIVE SPEAKER_DEVICE Internal speaker", "HDMI_DEVICE TV (HDMI)", "DEVICE WF-C510"]);
+        assert_eq!(m.device_start(), 3);
+        m.output = crate::hdmi::HDMI_ROUTE.into();
+        assert_eq!(&m.rows()[1..3], &["SPEAKER_DEVICE Internal speaker", "ACTIVE HDMI_DEVICE TV (HDMI)"]);
+        m.output = "speaker".into();
+        m.selected = 2;
+        m.input(Action::GbaDown(Btn::A));
+        assert_eq!(m.status, "Switching output...");
+        m.cancel_pending();
+        m.tv = false;
+        assert!(!m.rows().iter().any(|r| r.contains("HDMI")), "no TV row on the handheld's screen");
     }
     #[test]
     fn pairing_disclosure_opens_with_a_or_right_only() {
