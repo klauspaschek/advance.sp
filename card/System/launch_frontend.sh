@@ -6,6 +6,9 @@ LOGS="$SD/Logs"
 SESSION_MAX=65536
 export SLOT_ROOT="$SD"
 export SLOT_RUN="$RUN"
+# An empty file named TRACE_INPUT at the card's root records every input event, and what each
+# input device reports, in Logs/input-trace.log: for checking a new controller's buttons.
+[ -f "$SD/TRACE_INPUT" ] && export SLOT_TRACE_INPUT=1
 
 # Never inherit networking credentials from a prior launcher session after a
 # crash. The Wi-Fi helper only stops supplicants it owns; unrelated Wi-Fi stays
