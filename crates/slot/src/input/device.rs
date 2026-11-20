@@ -37,6 +37,8 @@ pub struct DeviceInput {
     extras: Arc<Mutex<Vec<PadExtra>>>,
     arrived: Arc<AtomicBool>,
     last_source: Arc<AtomicU8>,
+    /// The button checker is open: a pad's stick does not press the d-pad.
+    checking: Arc<AtomicBool>,
     share_since: Option<Millis>,
     share_power: bool,
     actions: Vec<Action>,
@@ -71,6 +73,7 @@ impl DeviceInput {
             extras: Arc::new(Mutex::new(Vec::new())),
             arrived: Arc::new(AtomicBool::new(false)),
             last_source: Arc::new(AtomicU8::new(0)),
+            checking: Arc::new(AtomicBool::new(false)),
             trace,
         };
         nodes.open_new(false);
@@ -82,6 +85,7 @@ impl DeviceInput {
             extras: nodes.extras.clone(),
             arrived: nodes.arrived.clone(),
             last_source: nodes.last_source.clone(),
+            checking: nodes.checking.clone(),
             share_since: None,
             share_power: false,
             actions: Vec::new(),
@@ -117,6 +121,8 @@ struct Nodes {
     extras: Arc<Mutex<Vec<PadExtra>>>,
     arrived: Arc<AtomicBool>,
     last_source: Arc<AtomicU8>,
+    /// The button checker is open: a pad's stick does not press the d-pad.
+    checking: Arc<AtomicBool>,
     trace: Option<Arc<Trace>>,
 }
 
@@ -156,6 +162,7 @@ impl Nodes {
                 by_position: self.by_position.clone(),
                 extras: pad.then(|| self.extras.clone()),
                 last_source: self.last_source.clone(),
+                checking: self.checking.clone(),
                 trace: self.trace.clone(),
             };
             let opened = self.opened.clone();
@@ -236,6 +243,8 @@ struct Reader {
     extras: Option<Arc<Mutex<Vec<PadExtra>>>>,
     /// Who pressed last: 1 the handheld, 2 a gamepad.
     last_source: Arc<AtomicU8>,
+    /// The button checker is open: a pad's stick does not press the d-pad.
+    checking: Arc<AtomicBool>,
     trace: Option<Arc<Trace>>,
 }
 
@@ -325,9 +334,16 @@ impl Reader {
                 }
                 match ev.kind {
                     EV_ABS if pad => {
-                        // an external pad's stick always steers: it is the pad's d-pad too
+                        // an external pad's stick always steers: it is the pad's d-pad too,
+                        // except in the button checker, which shows the stick on its own (a
+                        // release still goes through, so nothing stays held)
                         hat.steer_with_stick(true);
-                        events.extend(axes.feed(&mut hat, ev));
+                        let pressed = axes.feed(&mut hat, ev);
+                        if self.checking.load(Ordering::Relaxed) && matches!(ev.code, ABS_X | ABS_Y) {
+                            events.extend(pressed.into_iter().filter(|e| matches!(e, RawEvent::Up(_))));
+                        } else {
+                            events.extend(pressed);
+                        }
                     }
                     EV_ABS => {
                         hat.steer_with_stick(self.steers.load(Ordering::Relaxed));
@@ -445,6 +461,7 @@ impl DeviceInput {
             self.share_power = false;
         }
         self.testing = on;
+        self.checking.store(on, Ordering::Relaxed);
     }
 
     /// The extra buttons pressed or let go while the button checker is open.
@@ -644,5 +661,55 @@ mod picture_step_tests {
         assert!(input.poll(0).is_empty(), "no buttons, no rewind or fast-forward");
         assert_eq!(input.take_picture_steps(), vec![true, false]);
         assert!(input.take_actions().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod checker_stick_tests {
+    use super::*;
+    use crate::input::evdev::{ABS_BRAKE, ABS_GAS};
+
+    fn packet(kind: u16, code: u16, value: i32) -> [u8; EVENT_BYTES] {
+        let mut b = [0u8; EVENT_BYTES];
+        b[16..18].copy_from_slice(&kind.to_le_bytes());
+        b[18..20].copy_from_slice(&code.to_le_bytes());
+        b[20..24].copy_from_slice(&value.to_le_bytes());
+        b
+    }
+
+    /// The pad's left stick pushed fully right, then centred, read by a pad reader.
+    fn read(checking: bool) -> (Vec<RawEvent>, Vec<PadExtra>) {
+        let d = tempfile::tempdir().unwrap();
+        let node = d.path().join("event9");
+        // a regular file has no absinfo: the default stick range, -32768 to 32767
+        std::fs::write(&node, [packet(EV_ABS, ABS_X, 32767), packet(EV_ABS, ABS_X, 0)].concat()).unwrap();
+        let reader = Reader {
+            layout: Layout::Pad,
+            triggers: [ABS_BRAKE, ABS_GAS],
+            queue: Arc::new(Mutex::new(Vec::new())),
+            steers: Arc::new(AtomicBool::new(false)),
+            by_position: Arc::new(AtomicBool::new(true)),
+            extras: Some(Arc::new(Mutex::new(Vec::new()))),
+            last_source: Arc::new(AtomicU8::new(0)),
+            checking: Arc::new(AtomicBool::new(checking)),
+            trace: None,
+        };
+        reader.read(&node);
+        let events = lock(&reader.queue).clone();
+        let extras = lock(reader.extras.as_ref().unwrap()).clone();
+        (events, extras)
+    }
+
+    #[test]
+    fn in_play_the_left_stick_is_the_d_pad() {
+        let (events, _) = read(false);
+        assert_eq!(&events[..2], &[RawEvent::Down(Btn::Right), RawEvent::Up(Btn::Right)]);
+    }
+
+    #[test]
+    fn in_the_checker_the_left_stick_moves_only_its_dot() {
+        let (events, extras) = read(true);
+        assert!(!events.contains(&RawEvent::Down(Btn::Right)), "the d-pad did not light: {events:?}");
+        assert!(extras.contains(&PadExtra::LeftStick(1, true)), "the stick still reports itself");
     }
 }
