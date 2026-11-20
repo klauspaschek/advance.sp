@@ -140,20 +140,20 @@ fn xbox_button(style: &Style, lit: bool, cx: f32, cy: f32, ink: [u8; 3]) -> Part
 
 fn xbox(style: &Style, held: &dyn Fn(&str) -> bool, nintendo: bool, ink: [u8; 3]) -> (String, Vec<Part>) {
     let body = format!(
-        r#"<path d="M150 62 Q300 44 450 62 Q544 74 570 172 Q588 262 520 266 Q480 268 440 212 L160 212 Q120 268 80 266 Q12 262 30 172 Q56 74 150 62 Z" fill="{}" stroke="{}" stroke-width="3"/>"#,
+        r#"<path d="M150 62 Q300 44 450 62 Q544 74 570 172 Q588 262 520 266 Q480 268 440 228 L160 228 Q120 268 80 266 Q12 262 30 172 Q56 74 150 62 Z" fill="{}" stroke="{}" stroke-width="3"/>"#,
         hex(ink, 0.06),
         hex(ink, 0.35)
     );
     let mut parts = vec![
-        // named as the RG SP's: LT is L2, LB is L1
-        rect(style, held("L2"), 130.0, 2.0, 72.0, 24.0, 9.0, Some("L2")),
-        rect(style, held("R2"), 398.0, 2.0, 72.0, 24.0, 9.0, Some("R2")),
-        rect(style, held("L1"), 104.0, 32.0, 120.0, 22.0, 11.0, Some("L1")),
-        rect(style, held("R1"), 376.0, 32.0, 120.0, 22.0, 11.0, Some("R1")),
+        // the controller's own names: the line beneath says what slot makes of them
+        rect(style, held("L2"), 130.0, 2.0, 72.0, 24.0, 9.0, Some("LT")),
+        rect(style, held("R2"), 398.0, 2.0, 72.0, 24.0, 9.0, Some("RT")),
+        rect(style, held("L1"), 104.0, 32.0, 120.0, 22.0, 11.0, Some("LB")),
+        rect(style, held("R1"), 376.0, 32.0, 120.0, 22.0, 11.0, Some("RB")),
     ];
     parts.extend(stick(style, held, "LS", "L3", 165.0, 118.0));
-    parts.extend(dpad(style, held, 232.0, 178.0, 22.0));
-    parts.extend(stick(style, held, "RS", "R3", 368.0, 178.0));
+    parts.extend(dpad(style, held, 232.0, 172.0, 22.0));
+    parts.extend(stick(style, held, "RS", "R3", 368.0, 172.0));
     // the face buttons where they sit on an Xbox pad, lit by the button slot makes of them
     for (label, nin, lab, cx, cy) in [
         ("Y", "X", "Y", 446.0, 86.0),
@@ -163,13 +163,13 @@ fn xbox(style: &Style, held: &dyn Fn(&str) -> bool, nintendo: bool, ink: [u8; 3]
     ] {
         parts.push(circle(style, held(if nintendo { nin } else { lab }), cx, cy, 15.0, Some(label)));
     }
-    // View is Select and Menu is Start, the Xbox button is MENU
+    // the controller's own names (View is slot's Select, Menu its Start, the Xbox button its
+    // MENU): the line beneath says what slot makes of each press
     parts.push(circle(style, held("Select"), 256.0, 120.0, 10.0, None));
-    parts.push(caption("Select", 256.0, 102.0, 12.0));
+    parts.push(caption("View", 256.0, 102.0, 12.0));
     parts.push(circle(style, held("Start"), 344.0, 120.0, 10.0, None));
-    parts.push(caption("Start", 344.0, 102.0, 12.0));
+    parts.push(caption("Menu", 344.0, 102.0, 12.0));
     parts.push(xbox_button(style, held("Menu"), 300.0, 84.0, ink));
-    parts.push(caption("Menu", 300.0, 113.0, 12.0));
     parts.push(rect(style, held("Share"), 288.0, 132.0, 24.0, 12.0, 6.0, None));
     parts.push(caption("Share", 300.0, 154.0, 11.0));
     (body, parts)

@@ -400,15 +400,20 @@ fn in_game_buttons_are_set_from_the_main_menu_and_reach_a_game() {
         tap(&mut s, &mut now, Btn::Down);
     }
     tap(&mut s, &mut now, Btn::A);
+    // up past Test buttons, the last row
+    tap(&mut s, &mut now, Btn::Up);
     tap(&mut s, &mut now, Btn::Up);
     assert_eq!(s.app().quick_menu(), Some(QuickRow::ControlsInGame));
     tap(&mut s, &mut now, Btn::A);
+    // the page opens on Controller layout, greyed out without a controller
+    assert_eq!(s.app().quick_menu(), Some(QuickRow::PadLayout));
+    tap(&mut s, &mut now, Btn::Down);
     assert_eq!(s.app().quick_menu(), Some(QuickRow::GameUp));
     assert_eq!(
         QuickRow::GameUp.shown(&s.app().hidden_rows()),
         QuickRow::CONTROLS
     );
-    for _ in 0..QuickRow::GameA.position(&[]) {
+    for _ in QuickRow::GameUp.position(&[])..QuickRow::GameA.position(&[]) {
         tap(&mut s, &mut now, Btn::Down);
     }
     tap(&mut s, &mut now, Btn::A);
@@ -480,6 +485,7 @@ fn turbo_b_moves_off_y_from_the_in_game_page() {
         tap(&mut s, &mut now, Btn::Down);
     }
     tap(&mut s, &mut now, Btn::A);
+    tap(&mut s, &mut now, Btn::Up);
     tap(&mut s, &mut now, Btn::Up);
     tap(&mut s, &mut now, Btn::A);
     for _ in 0..QuickRow::GameTurboB.position(&[]) {

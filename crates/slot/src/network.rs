@@ -1887,15 +1887,14 @@ mod tests {
     fn general_network_tools_route_to_wifi_and_return_without_enabling_it() {
         let root=tempfile::tempdir().unwrap();let mut app=crate::app::App::new(vec![]);app.network=Some(Menu::new(root.path().into()));
         app.apply(Action::QuickMenu);app.apply(Action::GbaDown(Btn::A));
-        assert_eq!(app.quick_menu(),Some(slot_ui::QuickRow::SecurityPin));app.apply(Action::GbaDown(Btn::Down));
         assert_eq!(app.quick_menu(),Some(slot_ui::QuickRow::Updates));app.apply(Action::GbaDown(Btn::A));
         let m=app.network.as_ref().unwrap();assert_eq!(m.page,Page::Wifi);assert_eq!(m.notice_text(),Some("Wi-Fi needed for updates"));assert!(!m.wifi_on);
-        app.apply(Action::GbaDown(Btn::B));assert_eq!(app.quick_menu(),Some(slot_ui::QuickRow::Updates));app.apply(Action::GbaDown(Btn::Down));app.apply(Action::GbaDown(Btn::A));
+        app.apply(Action::GbaDown(Btn::B));assert_eq!(app.quick_menu(),Some(slot_ui::QuickRow::Updates));app.apply(Action::GbaDown(Btn::Down));app.apply(Action::GbaDown(Btn::Down));assert_eq!(app.quick_menu(),Some(slot_ui::QuickRow::AutomaticTime));app.apply(Action::GbaDown(Btn::A));
         let m=app.network.as_ref().unwrap();assert_eq!(m.notice_text(),Some("Wi-Fi needed for automatic time"));assert!(!m.prefs.automatic_time);
         app.apply(Action::GbaDown(Btn::B));
         let m=app.network.as_mut().unwrap();m.wifi_on=true;m.last_wifi.on=true;m.last_wifi.connected=Some("Home".into());m.last_wifi.ip=Some("192.0.2.1".into());
         app.apply(Action::GbaDown(Btn::A));assert!(app.network.as_ref().unwrap().prefs.automatic_time);assert!(!app.network.as_ref().unwrap().visible);
-        app.apply(Action::GbaDown(Btn::Up));app.apply(Action::GbaDown(Btn::A));assert_eq!(app.network.as_ref().unwrap().page,Page::Updates);app.apply(Action::GbaDown(Btn::B));assert!(!app.network.as_ref().unwrap().visible);assert_eq!(app.quick_menu(),Some(slot_ui::QuickRow::Updates));
+        app.apply(Action::GbaDown(Btn::Up));app.apply(Action::GbaDown(Btn::Up));app.apply(Action::GbaDown(Btn::A));assert_eq!(app.network.as_ref().unwrap().page,Page::Updates);app.apply(Action::GbaDown(Btn::B));assert!(!app.network.as_ref().unwrap().visible);assert_eq!(app.quick_menu(),Some(slot_ui::QuickRow::Updates));
     }
     #[derive(Default)]
     struct UpdateFake {asked:std::sync::Arc<std::sync::Mutex<Vec<UpdateJob>>>,events:std::collections::VecDeque<UpdateEvent>}

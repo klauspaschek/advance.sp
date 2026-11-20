@@ -1,5 +1,5 @@
-//! General → Test buttons: every button lights up while held and none acts, until B is held.
-//! Gameplay → Controller layout: greyed out without a controller.
+//! Device controls → Test buttons: every button lights up while held and none acts, until B is
+//! held. Device controls → In-Game → Controller layout: greyed out without a controller.
 
 mod common;
 
@@ -26,13 +26,13 @@ fn session() -> (tempfile::TempDir, Session, u64) {
     (d, s, 1000)
 }
 
-/// Opens a page of the main menu and moves down to `row`.
-fn open_row(s: &mut Session, time: &mut u64, tile_steps: usize, row: QuickRow) {
+/// From the main menu, moves through the tiles with `path`, opens one with A, then moves down
+/// to `row`.
+fn open_row(s: &mut Session, time: &mut u64, path: &[Btn], row: QuickRow) {
     s.app_mut().apply(slot_input::Action::QuickMenu);
-    for _ in 0..tile_steps {
-        tap(s, time, Btn::Right);
+    for &b in path {
+        tap(s, time, b);
     }
-    tap(s, time, Btn::A);
     for _ in 0..12 {
         if s.app().quick_menu() == Some(row) {
             return;
@@ -42,17 +42,18 @@ fn open_row(s: &mut Session, time: &mut u64, tile_steps: usize, row: QuickRow) {
     panic!("{row:?} not found, at {:?}", s.app().quick_menu());
 }
 
-/// Opens General → Test buttons.
+/// Opens Device controls → Test buttons.
 fn checker() -> (tempfile::TempDir, Session, u64) {
     let (d, mut s, mut time) = session();
-    open_row(&mut s, &mut time, 0, QuickRow::ButtonTest);
+    // Device controls: second row, second tile
+    open_row(&mut s, &mut time, &[Btn::Down, Btn::Right, Btn::A], QuickRow::ButtonTest);
     tap(&mut s, &mut time, Btn::A);
     assert!(s.app().testing_buttons());
     (d, s, time)
 }
 
 #[test]
-fn the_checker_opens_from_general_with_nothing_held() {
+fn the_checker_opens_from_device_controls_with_nothing_held() {
     let (_d, s, _) = checker();
     assert!(held(&s).is_empty());
     let lines = s.app().bluetooth.as_ref().unwrap().lines();
@@ -77,7 +78,7 @@ fn a_held_button_lights_and_does_nothing_else() {
 }
 
 #[test]
-fn a_tap_of_b_is_tested_and_holding_b_goes_back_to_general() {
+fn a_tap_of_b_is_tested_and_holding_b_goes_back_to_device_controls() {
     let (_d, mut s, mut time) = checker();
     tap(&mut s, &mut time, Btn::B);
     assert!(s.app().testing_buttons(), "a tap of B is a button under test");
@@ -89,7 +90,7 @@ fn a_tap_of_b_is_tested_and_holding_b_goes_back_to_general() {
     s.feed([], time + slot::bluetooth::TEST_LEAVE_MS);
     assert!(!s.app().testing_buttons(), "held B left the checker");
     assert!(s.app().bluetooth.is_none(), "the checker closed");
-    assert_eq!(s.app().quick_menu(), Some(QuickRow::ButtonTest), "back on its row in General");
+    assert_eq!(s.app().quick_menu(), Some(QuickRow::ButtonTest), "back on its row in Device controls");
 }
 
 #[test]
@@ -109,8 +110,8 @@ fn a_controller_pressed_last_is_drawn_instead_of_the_handheld() {
 #[test]
 fn the_controller_layout_is_empty_without_a_controller_and_toggles_with_one() {
     let (d, mut s, mut time) = session();
-    // Gameplay is the fourth tile of the top row
-    open_row(&mut s, &mut time, 3, QuickRow::PadLayout);
+    // Device controls → In-Game, whose first row it is
+    open_row(&mut s, &mut time, &[Btn::Down, Btn::Right, Btn::A, Btn::Down, Btn::Down, Btn::Down, Btn::A], QuickRow::PadLayout);
     assert_eq!(s.app().quick_value(QuickRow::PadLayout), None, "no value without a controller");
     tap(&mut s, &mut time, Btn::Right);
     assert!(s.app().pad_faces_by_position(), "nothing changes without a controller");

@@ -336,8 +336,6 @@ fn the_game_page_flips_auto_load_eject_save_turbo_and_rewind_and_saves_each() {
     assert!(!a.turbo());
     press(&mut a, Btn::Down);
     press(&mut a, Btn::Down);
-    // past Controller layout, greyed out without a controller
-    press(&mut a, Btn::Down);
     assert_eq!(a.quick_menu(), Some(QuickRow::AutoLoad));
     press(&mut a, Btn::Right);
     assert_eq!(card(&d), (false, true, false, false));
@@ -816,7 +814,8 @@ fn the_arrows_stand_only_around_the_selected_rows_value() {
     press(&mut a, Btn::B);
     press(&mut a,Btn::Right);
     press(&mut a, Btn::A);
-    for _ in 0..QuickRow::ClockFormat.position(&a.hidden_rows()) {
+    // a row near Date & Time, which stays in the window and is grey
+    for _ in 0..QuickRow::TimeZone.position(&a.hidden_rows()) {
         press(&mut a, Btn::Down);
     }
     let out = frame(&a);
@@ -1670,10 +1669,11 @@ fn general_selection_stays_live_during_about_exit_and_rapid_navigation() {
     press(&mut a, Btn::A);
     a.update(0.06);
     press(&mut a, Btn::B);
-    press(&mut a, Btn::Up);
-    press(&mut a, Btn::Up);
-    press(&mut a, Btn::Up);
-    a.update(0.0);
+    while a.quick_menu() != Some(QuickRow::DateTime) {
+        press(&mut a, Btn::Up);
+    }
+    // Date & Time is a scroll above About: let the window settle
+    a.update(1.0);
     assert_eq!(a.quick_menu(), Some(QuickRow::DateTime));
     let returning = frame(&a);
     assert!(drawn(&returning, label(QuickRow::DateTime, true)), "the returning General card retained a stale selection");
@@ -1685,9 +1685,9 @@ fn general_selection_stays_live_during_about_exit_and_rapid_navigation() {
     assert_eq!(clock_surface, returning_surface, "opening another page snapped the returning surface");
     press(&mut a, Btn::B);
     assert_eq!(a.quick_menu(), Some(QuickRow::DateTime));
-    press(&mut a, Btn::Down);
-    press(&mut a, Btn::Down);
-    press(&mut a, Btn::Down);
+    while a.quick_menu() != Some(QuickRow::About) {
+        press(&mut a, Btn::Down);
+    }
     press(&mut a, Btn::A);
     assert!(matches!(a.phase(), Phase::About));
     a.update(1.0);

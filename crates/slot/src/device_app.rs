@@ -117,6 +117,9 @@ pub fn run() {
         for action in input.take_actions() {
             frontend.pad_action(action);
         }
+        for larger in input.take_picture_steps() {
+            frontend.pad_picture(larger);
+        }
         // a controller turned on while the handheld sleeps lightly wakes it, as on a console
         if input.take_pad_arrival() && frontend.dozing() {
             input.press_power();

@@ -280,25 +280,26 @@ impl QuickRow {
         QuickRow::ShutDown,
     ];
 
-    pub const GENERAL: [QuickRow; 9] = [
-        QuickRow::SecurityPin,
+    // updates, then the clock's settings together, then what is opened rarely
+    pub const GENERAL: [QuickRow; 8] = [
         QuickRow::Updates,
+        QuickRow::DateTime,
         QuickRow::AutomaticTime,
         QuickRow::TimeZone,
         QuickRow::ClockFormat,
-        QuickRow::DateTime,
+        QuickRow::SecurityPin,
         QuickRow::Kids,
-        QuickRow::ButtonTest,
         QuickRow::About,
     ];
 
     pub const SOUND_OPTIONS: [QuickRow; 1] = [QuickRow::CarouselSounds];
 
-    pub const CONTROL_PAGES: [QuickRow; 4] = [
+    pub const CONTROL_PAGES: [QuickRow; 5] = [
         QuickRow::ControlsShelf,
         QuickRow::Shortcuts,
         QuickRow::Reference,
         QuickRow::ControlsInGame,
+        QuickRow::ButtonTest,
     ];
 
     pub const SHELF_KEYS: [QuickRow; 3] = [
@@ -307,7 +308,9 @@ impl QuickRow {
         QuickRow::ShelfFavorite,
     ];
 
-    pub const CONTROLS: [QuickRow; 12] = [
+    // a controller's layout first, then the game's buttons
+    pub const CONTROLS: [QuickRow; 13] = [
+        QuickRow::PadLayout,
         QuickRow::GameUp,
         QuickRow::GameDown,
         QuickRow::GameLeft,
@@ -379,7 +382,7 @@ impl QuickRow {
         QuickRow::GbBezel,
     ];
 
-    pub const GAME: [QuickRow; 10] = [
+    pub const GAME: [QuickRow; 9] = [
         QuickRow::Achievements,
         QuickRow::FastForward,
         QuickRow::FastForwardSound,
@@ -387,7 +390,6 @@ impl QuickRow {
         QuickRow::Turbo,
         QuickRow::Rumble,
         QuickRow::LeftStick,
-        QuickRow::PadLayout,
         QuickRow::AutoLoad,
         QuickRow::EjectSave,
     ];
@@ -449,14 +451,14 @@ impl QuickRow {
             | QuickRow::Turbo
             | QuickRow::Rumble
             | QuickRow::LeftStick
-            | QuickRow::PadLayout
             | QuickRow::AutoLoad
             | QuickRow::EjectSave => &QuickRow::GAME,
             QuickRow::Wallpaper | QuickRow::WallpaperTint | QuickRow::ShellColour
             | QuickRow::Theme | QuickRow::ShowTitles
             | QuickRow::CarouselMotion | QuickRow::Recents | QuickRow::FavoriteSort => &QuickRow::SCREEN,
-            QuickRow::About | QuickRow::ClockFormat | QuickRow::DateTime | QuickRow::Kids | QuickRow::ButtonTest => &QuickRow::GENERAL,
-            QuickRow::Reference | QuickRow::ControlsShelf | QuickRow::Shortcuts | QuickRow::ControlsInGame => {
+            QuickRow::About | QuickRow::ClockFormat | QuickRow::DateTime | QuickRow::Kids => &QuickRow::GENERAL,
+            QuickRow::PadLayout => &QuickRow::CONTROLS,
+            QuickRow::Reference | QuickRow::ControlsShelf | QuickRow::Shortcuts | QuickRow::ControlsInGame | QuickRow::ButtonTest => {
                 &QuickRow::CONTROL_PAGES
             }
             QuickRow::Resume
@@ -497,9 +499,9 @@ impl QuickRow {
             QuickRow::Achievements => Some(QuickRow::Game),
             QuickRow::PlayScreen => Some(QuickRow::Settings),
             QuickRow::PlayBrightness => Some(QuickRow::PlayScreen),
-            QuickRow::GameUp => Some(QuickRow::ControlsInGame),
+            QuickRow::PadLayout => Some(QuickRow::ControlsInGame),
             QuickRow::ScSave => Some(QuickRow::Shortcuts),
-            QuickRow::SecurityPin => Some(QuickRow::General),
+            QuickRow::Updates => Some(QuickRow::General),
             QuickRow::CarouselSounds => Some(QuickRow::Bluetooth),
             QuickRow::ControlsShelf => Some(QuickRow::Controls),
             QuickRow::ShelfPrev => Some(QuickRow::ControlsShelf),
@@ -2086,7 +2088,8 @@ pub struct QuickScroll {
     pub thumb_h: f32,
 }
 
-fn visible(page: &[QuickRow]) -> usize { if page.first().is_some_and(|r|r.binds()){QUICK_VISIBLE-1}else{QUICK_VISIBLE} }
+// a page of bindings (the In-Game one opens on Controller layout) leaves room for their hint
+fn visible(page: &[QuickRow]) -> usize { if page.iter().any(|r|r.binds()){QUICK_VISIBLE-1}else{QUICK_VISIBLE} }
 
 pub fn quick_window(selected: QuickRow, hidden: &[QuickRow]) -> (usize, usize) {
     let count = selected.shown(hidden).len();

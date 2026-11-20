@@ -2466,6 +2466,14 @@ impl App {
         }
     }
 
+    /// The next larger or smaller screen size (Actual, Stretch, Fit, Integer) of the game playing,
+    /// as L1 and R1 step it in a Game Boy game: a controller's right stick does it in any game.
+    pub fn step_picture(&mut self, larger: bool) {
+        if matches!(self.phase, Phase::Playing { .. }) && self.in_game_menu().is_none() {
+            self.set_picture(self.video_mode.step(larger));
+        }
+    }
+
     fn set_picture(&mut self, mode: VideoMode) {
         if self.video_mode == mode {
             return;

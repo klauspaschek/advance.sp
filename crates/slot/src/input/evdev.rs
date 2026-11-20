@@ -297,10 +297,10 @@ pub enum PadExtra {
     SaveState(bool),
     /// The right stick pressed in (loads a state) or let go.
     LoadState(bool),
-    /// The right stick held left (true) or let go (false).
-    Rewind(bool),
-    /// The right stick held right (true) or let go (false).
-    FastForward(bool),
+    /// The right stick pushed left (the next smaller screen size) or let go.
+    ScreenSmaller(bool),
+    /// The right stick pushed right (the next larger screen size) or let go.
+    ScreenLarger(bool),
     /// The right stick held up (volume up, repeating like the volume key) or let go.
     VolumeUp(bool),
     /// The right stick held down (volume down) or let go.
@@ -317,8 +317,8 @@ impl PadExtra {
             PadExtra::Share(on) => ("Share", on),
             PadExtra::SaveState(on) => ("L3", on),
             PadExtra::LoadState(on) => ("R3", on),
-            PadExtra::Rewind(on) => ("R←", on),
-            PadExtra::FastForward(on) => ("R→", on),
+            PadExtra::ScreenSmaller(on) => ("R←", on),
+            PadExtra::ScreenLarger(on) => ("R→", on),
             PadExtra::VolumeUp(on) => ("R↑", on),
             PadExtra::VolumeDown(on) => ("R↓", on),
             PadExtra::LeftStick(dir, on) => (["L←", "L→", "L↑", "L↓"][usize::from(dir.min(3))], on),
@@ -409,8 +409,8 @@ const RIGHT_PRESS: i32 = 2048;
 const RIGHT_LET_GO: i32 = 1024;
 
 /// An external pad's axes: the left stick and the hat steer the d-pad, an analog trigger past
-/// half its travel presses L2 or R2, and the right stick is a set of shortcuts (rewind and
-/// fast-forward across, the volume up and down).
+/// half its travel presses L2 or R2, and the right stick is a set of shortcuts (the screen size
+/// across, the volume up and down).
 pub struct PadAxes {
     stick: [Range; 2],
     trigger_codes: [u16; 2],
@@ -486,13 +486,13 @@ impl PadAxes {
         let mut out = Vec::new();
         if axis == 0 {
             match held {
-                -1 => out.push(PadExtra::Rewind(false)),
-                1 => out.push(PadExtra::FastForward(false)),
+                -1 => out.push(PadExtra::ScreenSmaller(false)),
+                1 => out.push(PadExtra::ScreenLarger(false)),
                 _ => {}
             }
             match now {
-                -1 => out.push(PadExtra::Rewind(true)),
-                1 => out.push(PadExtra::FastForward(true)),
+                -1 => out.push(PadExtra::ScreenSmaller(true)),
+                1 => out.push(PadExtra::ScreenLarger(true)),
                 _ => {}
             }
         } else {

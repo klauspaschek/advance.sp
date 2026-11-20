@@ -86,11 +86,11 @@ fn the_rows_run_in_the_order_the_user_chose() {
     );
     assert_eq!(
         QuickRow::GENERAL.map(QuickRow::label),
-        ["Device code", "Updates", "Automatic time", "Time zone", "Clock format", "Date & Time", "Parental controls", "Test buttons", "About"]
+        ["Updates", "Date & Time", "Automatic time", "Time zone", "Clock format", "Device code", "Parental controls", "About"]
     );
     assert_eq!(
         QuickRow::CONTROL_PAGES.map(QuickRow::label),
-        ["Shelf", "Shortcuts", "Buttons & Shortcuts", "In-Game"]
+        ["Shelf", "Shortcuts", "Buttons & Shortcuts", "In-Game", "Test buttons"]
     );
     assert_eq!(
         QuickRow::SHELF_KEYS.map(QuickRow::label),
@@ -126,7 +126,6 @@ fn the_rows_run_in_the_order_the_user_chose() {
             "Turbo Buttons",
             "Rumble",
             "Left Stick as D-Pad",
-            "Controller layout",
             "Load State on Insert",
             "Save State on Eject"
         ]
@@ -494,7 +493,9 @@ fn appearance_options_share_the_display_page_and_return_to_its_tile() {
     assert_eq!(QuickRow::BootAnimation.parent(), Some(QuickRow::Power));
     assert_eq!(QuickRow::CarouselSounds.parent(), Some(QuickRow::Bluetooth));
     assert_eq!(QuickRow::SecurityPin.parent(), Some(QuickRow::General));
-    assert_eq!(QuickRow::General.child(),Some(QuickRow::SecurityPin));
+    assert_eq!(QuickRow::General.child(),Some(QuickRow::Updates));
+    assert_eq!(QuickRow::ButtonTest.parent(), Some(QuickRow::Controls));
+    assert_eq!(QuickRow::PadLayout.parent(), Some(QuickRow::ControlsInGame));
 }
 
 #[test]

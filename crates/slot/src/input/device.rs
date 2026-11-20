@@ -43,6 +43,7 @@ pub struct DeviceInput {
     testing: bool,
     tested: Vec<(&'static str, bool)>,
     stick_volume: [bool; 2],
+    picture_steps: Vec<bool>,
     hall: Option<PathBuf>,
     lid_shut: Option<bool>,
     next_lid_poll: Millis,
@@ -87,6 +88,7 @@ impl DeviceInput {
             testing: false,
             tested: Vec::new(),
             stick_volume: [false; 2],
+            picture_steps: Vec::new(),
             hall: find_hall(Path::new(PSY)),
             lid_shut: None,
             next_lid_poll: 0,
@@ -248,8 +250,8 @@ impl Reader {
         if let Some(extras) = &self.extras {
             lock(extras).extend([
                 PadExtra::Share(false),
-                PadExtra::Rewind(false),
-                PadExtra::FastForward(false),
+                PadExtra::ScreenSmaller(false),
+                PadExtra::ScreenLarger(false),
                 PadExtra::VolumeUp(false),
                 PadExtra::VolumeDown(false),
             ]);
@@ -415,6 +417,11 @@ impl DeviceInput {
         std::mem::take(&mut self.actions)
     }
 
+    /// The screen size steps asked for since the last call: true for larger.
+    pub fn take_picture_steps(&mut self) -> Vec<bool> {
+        std::mem::take(&mut self.picture_steps)
+    }
+
     /// Whether the last button pressed was a gamepad's rather than the handheld's.
     pub fn pad_pressed_last(&self) -> bool {
         self.last_source.load(Ordering::Relaxed) == 2
@@ -480,12 +487,17 @@ impl DeviceInput {
                 }
                 PadExtra::SaveState(true) => self.actions.push(Action::SaveState),
                 PadExtra::LoadState(true) => self.actions.push(Action::LoadState),
-                PadExtra::Rewind(on) => self.actions.push(if on { Action::RewindStart } else { Action::RewindStop }),
-                PadExtra::FastForward(on) => self.actions.push(if on { Action::FfStart } else { Action::FfStop }),
+                // the screen size steps once per push, as L1 and R1 step it in a GB game
+                PadExtra::ScreenSmaller(true) => self.picture_steps.push(false),
+                PadExtra::ScreenLarger(true) => self.picture_steps.push(true),
                 // held like the volume keys, so the volume repeats as they do
                 PadExtra::VolumeUp(on) => self.stick_volume(0, Btn::VolUp, on, out),
                 PadExtra::VolumeDown(on) => self.stick_volume(1, Btn::VolDown, on, out),
-                PadExtra::SaveState(false) | PadExtra::LoadState(false) | PadExtra::LeftStick(..) => {}
+                PadExtra::SaveState(false)
+                | PadExtra::LoadState(false)
+                | PadExtra::ScreenSmaller(false)
+                | PadExtra::ScreenLarger(false)
+                | PadExtra::LeftStick(..) => {}
             }
         }
         if let Some(since) = self.share_since.filter(|_| !self.testing) {
@@ -617,5 +629,20 @@ mod stick_volume_tests {
         lock(&input.extras).extend([PadExtra::VolumeUp(false), PadExtra::VolumeDown(false)]);
         assert_eq!(input.poll(10), vec![RawEvent::Up(Btn::VolUp)], "no release of a key never pressed");
         assert!(input.take_actions().is_empty(), "no shader change any more");
+    }
+}
+
+#[cfg(test)]
+mod picture_step_tests {
+    use super::*;
+
+    #[test]
+    fn the_right_stick_across_steps_the_screen_size_once_per_push() {
+        let d = tempfile::tempdir().unwrap();
+        let mut input = DeviceInput::open_in(&d.path().join("dev"), &d.path().join("sys"), d.path(), false);
+        lock(&input.extras).extend([PadExtra::ScreenLarger(true), PadExtra::ScreenLarger(false), PadExtra::ScreenSmaller(true)]);
+        assert!(input.poll(0).is_empty(), "no buttons, no rewind or fast-forward");
+        assert_eq!(input.take_picture_steps(), vec![true, false]);
+        assert!(input.take_actions().is_empty());
     }
 }

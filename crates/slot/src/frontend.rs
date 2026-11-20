@@ -1141,6 +1141,11 @@ impl Frontend {
         self.session.app_mut().set_controllers(connected, pressed_last);
     }
 
+    /// A screen size step from a controller's right stick.
+    pub fn pad_picture(&mut self, larger: bool) {
+        self.session.pad_picture(larger);
+    }
+
     /// A controller's extra button seen by the button checker.
     pub fn test_extra(&mut self, name: &str, down: bool) {
         self.session.app_mut().test_extra(name, down);
