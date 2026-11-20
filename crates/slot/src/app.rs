@@ -1793,6 +1793,8 @@ impl App {
             self.hud.toast(
                 if active {
                     Toast::BluetoothConnected
+                } else if lost && self.disconnect_volume == 0 {
+                    Toast::BluetoothDisconnectedSilent
                 } else {
                     Toast::BluetoothDisconnected
                 },
@@ -1827,6 +1829,8 @@ impl App {
             self.hud.toast(
                 if active {
                     Toast::UsbConnected
+                } else if unplugged && !self.bluetooth_connected && self.disconnect_volume == 0 {
+                    Toast::UsbDisconnectedSilent
                 } else {
                     Toast::UsbDisconnected
                 },
@@ -4843,7 +4847,8 @@ impl App {
                 if !on && !self.bluetooth_connected && !self.usb_active {
                     self.pause_after_disconnect();
                     self.apply_disconnect_volume(false);
-                    self.hud.toast(Toast::HeadphonesDisconnected, self.now());
+                    let toast = if self.disconnect_volume == 0 { Toast::HeadphonesDisconnectedSilent } else { Toast::HeadphonesDisconnected };
+                    self.hud.toast(toast, self.now());
                 }
                 self.hud.set_headphones(on);
                 if let Some(menu) = &mut self.bluetooth {
@@ -8166,6 +8171,21 @@ mod bluetooth_tests {
     }
 
     #[test]
+    fn a_disconnect_says_when_it_left_the_sound_at_zero() {
+        let address = Some("AA:BB:CC:DD:EE:FF".to_owned());
+        let mut app = App::new(vec![]);
+        app.disconnect_volume = 30;
+        app.bluetooth_state(address.clone(), true);
+        app.bluetooth_state(address.clone(), false);
+        assert_eq!(app.toast(), Some(Toast::BluetoothDisconnected), "a level that is heard needs no note");
+        let mut app = App::new(vec![]);
+        app.disconnect_volume = 0;
+        app.usb_state(true, false);
+        app.usb_state(false, true);
+        assert_eq!(app.toast(), Some(Toast::UsbDisconnectedSilent));
+    }
+
+    #[test]
     fn reconnect_restores_bluetooth_volume_without_resetting_each_poll() {
         let mut app = App::new(vec![]);
         let address = Some("AA:BB:CC:DD:EE:FF".to_owned());
@@ -8175,7 +8195,7 @@ mod bluetooth_tests {
         app.bluetooth_state(address.clone(), false);
         assert_eq!(app.output_volume(), 0);
         assert_eq!(app.hud_icon(), Icon::VolumeMuted);
-        assert_eq!(app.toast(), Some(Toast::BluetoothDisconnected));
+        assert_eq!(app.toast(), Some(Toast::BluetoothDisconnectedSilent), "the silence is explained");
         app.bluetooth_state(None, false); // fallback helper clears the route
         app.state.volume = 15;app.state.muted=false; // adjust speaker while disconnected
         app.bluetooth_state(address.clone(), true);

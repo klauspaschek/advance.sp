@@ -13,6 +13,11 @@ pub enum Toast {
     UsbConnected,
     UsbDisconnected,
     HeadphonesDisconnected,
+    /// The same, when Vol. on disconnect left the sound at 0%: say so, or the silence looks
+    /// like a fault.
+    BluetoothDisconnectedSilent,
+    UsbDisconnectedSilent,
+    HeadphonesDisconnectedSilent,
     StateSaved,
     StateLoaded,
     ShotCaptured,
@@ -43,7 +48,7 @@ pub enum Toast {
 }
 
 impl Toast {
-    const FIXED: [Toast; 30] = [
+    const FIXED: [Toast; 33] = [
         Toast::BluetoothConnected,
         Toast::BluetoothDisconnected,
         Toast::UsbConnected,
@@ -74,6 +79,9 @@ impl Toast {
         Toast::CardRepairCharge,
         Toast::CardRepaired,
         Toast::CardRepairFailed,
+        Toast::BluetoothDisconnectedSilent,
+        Toast::UsbDisconnectedSilent,
+        Toast::HeadphonesDisconnectedSilent,
     ];
 
     pub fn all() -> Vec<Toast> {
@@ -104,6 +112,9 @@ impl Toast {
                 | Toast::HeadphonesDisconnected
                 | Toast::UsbConnected
                 | Toast::UsbDisconnected
+                | Toast::BluetoothDisconnectedSilent
+                | Toast::UsbDisconnectedSilent
+                | Toast::HeadphonesDisconnectedSilent
         )
     }
 
@@ -156,6 +167,9 @@ impl Toast {
             Toast::UsbDisconnected => "USB audio disconnected",
             Toast::BluetoothDisconnected => "Bluetooth disconnected",
             Toast::HeadphonesDisconnected => "Headphones unplugged",
+            Toast::BluetoothDisconnectedSilent => "Bluetooth disconnected · volume 0%",
+            Toast::UsbDisconnectedSilent => "USB audio disconnected · volume 0%",
+            Toast::HeadphonesDisconnectedSilent => "Headphones unplugged · volume 0%",
             Toast::StateSaved => "State Saved",
             Toast::StateLoaded => "State Loaded",
             Toast::ShotCaptured => "Screenshot Captured",
