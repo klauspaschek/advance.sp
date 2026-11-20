@@ -23,6 +23,7 @@
 - **Bluetooth** takes the place of *Parental controls* on the main menu. It holds the Bluetooth switch, every paired device (headphones and controllers, each with its icon) and **Pair new device**.
 - **Device controls** gains **Test buttons** (see [below](#bluetooth-controllers)), and its **In-Game** page opens on **Controller layout**: Nintendo or Xbox face buttons for a controller, greyed out until one is connected.
 - **General** is regrouped: Updates, then Date & Time, Automatic time, Time zone and Clock format together, then Device code, Parental controls and About.
+- **Device code** can be **No code**: Wi-Fi and RetroAchievements credentials are then saved without a code and open by themselves, with no prompt at startup (anyone holding the SD card could read them). With a code, **Startup access → Ask when needed** no longer asks at startup, only when Network, Wi-Fi, achievements or sharing first need it.
 - **Sound** keeps volume, the output choice (speaker, wired, Bluetooth or USB headphones) and the disconnect options. Headphones are paired in the Bluetooth tile.
 - **Parental controls** (kid mode) are unchanged and now live in **General**.
 

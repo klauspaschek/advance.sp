@@ -11,21 +11,27 @@ use zeroize::{Zeroize, Zeroizing};
 
 const MAGIC: &[u8; 8] = b"SLOTNET1";
 const BUTTON_MAGIC: &[u8; 8] = b"SLOTBTN1";
+/// No code: the file has the same shape, under a key anyone can derive. Not protection; it lets
+/// credentials open by themselves at startup.
+const NO_CODE_MAGIC: &[u8; 8] = b"SLOTNONE";
 const MAX_FILE: usize = 32 * 1024;
 pub const MIN_CODE_LEN: usize = 6;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Method { Buttons, Passphrase }
+pub enum Method { Buttons, Passphrase, NoCode }
 impl Method {
     fn magic(self) -> &'static [u8; 8] {
-        match self { Self::Buttons => BUTTON_MAGIC, Self::Passphrase => MAGIC }
+        match self { Self::Buttons => BUTTON_MAGIC, Self::Passphrase => MAGIC, Self::NoCode => NO_CODE_MAGIC }
     }
     fn from_magic(bytes: &[u8]) -> Option<Self> {
         if bytes == BUTTON_MAGIC { Some(Self::Buttons) }
-        else if bytes == MAGIC { Some(Self::Passphrase) } else { None }
+        else if bytes == MAGIC { Some(Self::Passphrase) }
+        else if bytes == NO_CODE_MAGIC { Some(Self::NoCode) } else { None }
     }
     fn validate(self, secret: &str) -> Result<(), &'static str> {
         match self {
+            Self::NoCode if secret.is_empty() => Ok(()),
+            Self::NoCode => Err("No code takes no code"),
             Self::Buttons if secret.len() >= MIN_CODE_LEN && secret.bytes().all(|b| (b'a'..=b'l').contains(&b)) => Ok(()),
             Self::Buttons => Err("Use at least 6 button presses"),
             Self::Passphrase if secret.chars().count() >= 12 => Ok(()),

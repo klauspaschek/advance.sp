@@ -133,6 +133,15 @@ impl Menu {
     pub fn pin_hint_key(&self)->u64 {u64::from(self.code.is_some_and(|f|f!=Field::Unlock) && self.code_text.len()>=network_vault::MIN_CODE_LEN)}
     fn setup_pin(&mut self) {self.open_security();self.selected=1;self.say("Set a code to encrypt credentials");}
     pub fn open(&mut self) { self.open_wifi(); }
+    /// Network opened from the menu: saved credentials still locked since startup are asked for
+    /// now, and Wi-Fi reconnects once they open.
+    pub fn open_network(&mut self) {
+        self.open_wifi();
+        if self.encrypted && self.locked && !self.startup_pending && !self.upgrade_pin
+            && (self.prefs.wifi_enabled || self.prefs.achievements || self.prefs.sharing_enabled) {
+            self.unlock(self.prefs.wifi_enabled.then_some(AfterUnlock::Reconnect));
+        }
+    }
     pub fn open_wifi(&mut self) {
         self.visible = true; self.page = Page::Wifi; self.selected = 0; self.sharing_reveal=false; self.report_shoulders=0; self.notice.clear(); self.changed();
     }
@@ -173,7 +182,17 @@ impl Menu {
         if !self.encrypted {
             self.prefs.wifi_enabled=false;self.prefs.achievements=false;self.store_preferences();return;
         }
-        if self.prefs.lock_device || self.prefs.wifi_enabled || self.prefs.achievements || self.prefs.sharing_enabled || self.migrating_plain {
+        // No code: the credentials open by themselves, and Wi-Fi reconnects, without a prompt
+        if self.method == Some(Method::NoCode) {
+            if self.locked {
+                self.after_unlock = self.prefs.wifi_enabled.then_some(AfterUnlock::Reconnect);
+                self.submit(Job::Unlock(Zeroizing::new(String::new())));
+            }
+            return;
+        }
+        // With a code, startup asks only when the code is required to use the handheld; otherwise
+        // it is asked when Wi-Fi, achievements or sharing are first needed (see open_network).
+        if self.prefs.lock_device || self.migrating_plain {
             if self.prefs.wifi_enabled {self.open_wifi();}else{self.open_achievements();}
             self.return_to_shelf=true;
             self.unlock(if self.prefs.wifi_enabled {Some(AfterUnlock::Reconnect)}else{None});
@@ -502,6 +521,13 @@ impl Menu {
     }
     fn prompt(&mut self, field: Field) {
         let method = if field == Field::Unlock { self.method.unwrap_or(Method::Passphrase) } else { self.creating_method };
+        if method == Method::NoCode {
+            match field {
+                Field::Unlock => { self.submit(Job::Unlock(Zeroizing::new(String::new()))); return; }
+                Field::CreateVault | Field::ConfirmVault => { self.create_vault(Zeroizing::new(String::new())); return; }
+                _ => {}
+            }
+        }
         if method == Method::Buttons {
             self.keyboard = None; self.code = Some(field); self.code_text.zeroize(); self.button_pending.clear();self.pin_rejected=None;self.notice.clear(); self.changed();
         } else {
@@ -511,6 +537,24 @@ impl Menu {
         }
     }
     fn unlock(&mut self, after: Option<AfterUnlock>) { self.after_unlock = after; self.prompt(Field::Unlock); }
+    /// Saves the credentials under `text` with the method chosen in Device code.
+    fn create_vault(&mut self, text: Zeroizing<String>) {
+        if self.creating_method == Method::NoCode && self.root.join("Config/kids/use-device-pin").exists() {
+            self.say("Set a separate parent code first");
+            return;
+        }
+        let saved=if self.migrating_plain {
+            let Some(saved)=migration_secrets(&self.root,&self.secrets) else {self.warn("Could not read old credentials",slot_ui::NoticeTone::Danger);return;};
+            self.secrets=saved.clone();saved
+        } else {self.secrets.clone()};
+        if self.creating_method == Method::NoCode {
+            // nothing to remember at startup: it would only ask for a code that does not exist
+            self.prefs.lock_device=false;self.store_preferences();
+        }
+        self.short_pin=self.creating_method==Method::Buttons && text.len()<8;
+        self.submit(Job::Create(text, saved, self.creating_method));
+        self.say(if self.creating_method == Method::NoCode {"Saving credentials without a code"} else {"Encrypting credentials"});
+    }
     fn unlocked(&mut self) -> bool {
         if !self.encrypted || self.upgrade_pin {self.setup_pin();return false;}
         if self.locked { self.unlock(None); false } else { true }
@@ -693,10 +737,17 @@ impl Menu {
         if btn != Btn::A && !disclosure && !((self.selected == 0 || (self.page==Page::Security && self.selected==2) || (self.page==Page::Sharing && self.selected==1) || (self.page==Page::Achievements && matches!(self.selected,5|6))) && matches!(btn, Btn::Left | Btn::Right)) { return; }
         match self.page {
             Page::Security => match self.selected {
-                0 => { self.creating_method = match self.creating_method {Method::Buttons=>Method::Passphrase,Method::Passphrase=>Method::Buttons}; self.changed(); }
+                0 => {
+                    // Button code → Passphrase → No code; Left goes back
+                    const ORDER: [Method; 3] = [Method::Buttons, Method::Passphrase, Method::NoCode];
+                    let at = ORDER.iter().position(|m| *m == self.creating_method).unwrap_or(0);
+                    self.creating_method = ORDER[(at + if btn == Btn::Left { 2 } else { 1 }) % 3];
+                    self.changed();
+                }
                 1 => { if self.locked { self.unlock(Some(AfterUnlock::ChangePin)); } else { self.first_pass.zeroize(); self.prompt(Field::CreateVault); } }
                 2 => {
                     if !self.encrypted {self.say("Set Device code first");}
+                    else if self.method == Some(Method::NoCode) {self.say("No code is set: nothing to ask for");}
                     else {self.prefs.lock_device=!self.prefs.lock_device;self.store_preferences();self.changed();}
                 }
                 3 => { if self.root.join("Config/kids/use-device-pin").exists() {self.say("Set a separate parent code first");}
@@ -805,11 +856,7 @@ impl Menu {
             Field::CreateVault => { self.first_pass = text; self.prompt(Field::ConfirmVault); }
             Field::ConfirmVault => {
                 if self.first_pass.as_str() != text.as_str() { self.first_pass.zeroize(); self.prompt(Field::CreateVault); self.say("Codes did not match"); return; }
-                self.first_pass.zeroize(); let saved=if self.migrating_plain {
-                    let Some(saved)=migration_secrets(&self.root,&self.secrets) else {self.warn("Could not read old credentials",slot_ui::NoticeTone::Danger);return;};
-                    self.secrets=saved.clone();saved
-                } else {self.secrets.clone()};
-                self.short_pin=self.creating_method==Method::Buttons && text.len()<8;self.submit(Job::Create(text, saved, self.creating_method)); self.say("Encrypting credentials");
+                self.first_pass.zeroize(); self.create_vault(text);
             }
             Field::Unlock => {self.short_pin=self.method==Some(Method::Buttons)&&text.len()<8; self.submit(Job::Unlock(text)); self.say("Unlocking credentials"); }
         }
@@ -829,9 +876,9 @@ impl Menu {
             else { if self.locked {"Unlock to use account"} else if self.prefs.achievements {"Account needed"} else {"Disabled"}.into() };
         let mut rows = match self.page {
             Page::Security => vec![
-                ("Unlock with".into(),match self.creating_method {Method::Buttons=>"Button code",Method::Passphrase=>"Passphrase"}.into(),true),
-                (if self.encrypted {"Change Device code"} else {"Set Device code"}.into(),if self.locked {"Locked"} else if self.encrypted {""} else {"Not set"}.into(),false),
-                ("Startup access".into(),if self.prefs.lock_device {"Require code"}else{"Code optional"}.into(),true),
+                ("Unlock with".into(),match self.creating_method {Method::Buttons=>"Button code",Method::Passphrase=>"Passphrase",Method::NoCode=>"No code"}.into(),true),
+                (if self.encrypted {"Change Device code"} else {"Set Device code"}.into(),if self.locked {"Locked"} else if self.method==Some(Method::NoCode) {"No code"} else if self.encrypted {""} else {"Not set"}.into(),false),
+                ("Startup access".into(),if self.method==Some(Method::NoCode) {"No code"} else if self.prefs.lock_device {"Require code"}else{"Ask when needed"}.into(),self.method!=Some(Method::NoCode)),
                 ("Forget Device code".into(),String::new(),false),
             ],
             Page::Wifi => vec![
@@ -1444,13 +1491,16 @@ mod tests {
     fn startup_unlock_retries_and_resumes_saved_connection_without_a_second_press() {
         let root=tempfile::tempdir().unwrap();saved_wifi(root.path());
         let mut menu=Menu::new(root.path().into());menu.startup();
+        // with the code optional, startup stays out of the way: opening Network asks for it
+        assert!(!menu.visible && menu.locked && !menu.wifi_on);assert!(menu.code.is_none());
+        menu.open_network();
         assert!(menu.visible && menu.locked && !menu.wifi_on);assert_eq!(menu.code,Some(Field::Unlock));
         submit_code(&mut menu,&[Btn::A;4]);wait(&mut menu);
         assert!(menu.locked && !menu.wifi_on);assert_eq!(menu.code,Some(Field::Unlock));
         assert_eq!(menu.code_text.as_str(),"aaaa");assert_eq!(menu.notice_text(),Some("Use 6+ presses"));
         for _ in 0..4 {menu.input(Action::GbaDown(Btn::Select));}
         buttons(&mut menu,&CODE);wait(&mut menu);
-        assert!(!menu.locked && menu.wifi_on && !menu.visible);
+        assert!(!menu.locked && menu.wifi_on);
         let until=Instant::now()+Duration::from_secs(5);
         while menu.last_wifi.connected.is_none() {menu.update();assert!(Instant::now()<until);std::thread::sleep(Duration::from_millis(5));}
         assert_eq!(menu.last_wifi.connected.as_deref(),Some("Home-5G"));
@@ -1461,9 +1511,12 @@ mod tests {
     #[test]
     fn cancelling_startup_or_connection_never_turns_on_the_radio() {
         let root=tempfile::tempdir().unwrap();saved_wifi(root.path());
-        let mut menu=Menu::new(root.path().into());menu.startup();menu.input(Action::QuickMenu);
-        menu.update();assert_eq!(menu.take_toast(),Some("Saved credentials are locked"));assert!(!menu.visible && !menu.wifi_on && menu.locked);assert!(menu.after_unlock.is_none());
-        menu.startup();assert!(!menu.visible,"the cancelled card must not reopen this boot");
+        let mut menu=Menu::new(root.path().into());menu.startup();
+        assert!(!menu.visible && !menu.wifi_on && menu.locked,"no prompt at startup with the code optional");
+        menu.open_network();assert_eq!(menu.code,Some(Field::Unlock));menu.input(Action::QuickMenu);
+        assert!(!menu.wifi_on && menu.locked);assert!(menu.after_unlock.is_none());
+        menu.input(Action::GbaDown(Btn::B));
+        menu.startup();assert!(!menu.visible,"the card must not reopen this boot");
         menu.open_wifi();menu.input(Action::GbaDown(Btn::A));assert_eq!(menu.code,Some(Field::Unlock));
         menu.input(Action::QuickMenu);assert!(!menu.wifi_on && menu.after_unlock.is_none());
     }
@@ -1496,6 +1549,8 @@ mod tests {
         slot_store::write_slot_state(root.path(),&state).unwrap();
         let mut session=crate::session::Session::boot_with(root.path().into(),Box::new(sink));
         assert!(matches!(session.app().phase(),crate::app::Phase::Shelf));
+        // Require code: the one case that still asks at startup
+        session.app_mut().network.as_mut().unwrap().prefs.lock_device=true;
         session.app_mut().network.as_mut().unwrap().startup();
         assert_eq!(session.app().input_context(),Context::Menu);
         assert!(session.app().literal_menu_buttons());
@@ -1519,6 +1574,51 @@ mod tests {
         submit_code(&mut menu,&long);wait(&mut menu);assert!(!menu.short_pin);assert_eq!(menu.notice_tone(),slot_ui::NoticeTone::Neutral);
         let mut restarted=Menu::new(root.path().into());restarted.open_security();restarted.unlock(None);submit_code(&mut restarted,&long);wait(&mut restarted);assert!(!restarted.locked);
     }
+    /// Device code → Unlock with → No code, then Set Device code.
+    fn no_code(menu: &mut Menu) {
+        menu.open_security();menu.selected=0;
+        menu.input(Action::GbaDown(Btn::Left));
+        assert_eq!(menu.creating_method,Method::NoCode);
+        menu.selected=1;menu.input(Action::GbaDown(Btn::A));wait(menu);
+    }
+
+    #[test]
+    fn no_code_saves_credentials_that_open_and_reconnect_by_themselves() {
+        let root=tempfile::tempdir().unwrap();let mut menu=Menu::new(root.path().into());
+        menu.secrets.ssid="Home-5G".into();menu.secrets.wifi_password="password".into();
+        no_code(&mut menu);
+        assert!(menu.encrypted && !menu.locked);assert_eq!(menu.method,Some(Method::NoCode));
+        assert!(menu.code.is_none() && menu.keyboard.is_none(),"no code is asked for");
+        assert_eq!(network_vault::method(root.path()),Some(Method::NoCode));
+        assert_eq!(menu.rows()[2].1,"No code","nothing to require at startup");
+        menu.prefs.wifi_enabled=true;menu.store_preferences();
+        let mut restarted=Menu::new(root.path().into());restarted.startup();wait(&mut restarted);
+        assert!(!restarted.locked && restarted.wifi_on,"unlocked and reconnecting without a prompt");
+        assert!(!restarted.visible && restarted.code.is_none());
+        assert_eq!(restarted.secrets.ssid,"Home-5G");
+    }
+
+    #[test]
+    fn no_code_is_refused_while_parental_controls_use_the_device_code() {
+        let root=tempfile::tempdir().unwrap();let mut menu=Menu::new(root.path().into());pin(&mut menu);
+        std::fs::create_dir_all(root.path().join("Config/kids")).unwrap();
+        std::fs::write(root.path().join("Config/kids/use-device-pin"),"1\n").unwrap();
+        no_code(&mut menu);
+        assert_eq!(network_vault::method(root.path()),Some(Method::Buttons),"the code stays");
+        assert_eq!(menu.notice_text(),Some("Set a separate parent code first"));
+    }
+
+    #[test]
+    fn a_code_can_be_replaced_by_no_code_after_unlocking() {
+        let root=tempfile::tempdir().unwrap();saved_wifi(root.path());
+        let mut menu=Menu::new(root.path().into());menu.open_security();menu.selected=0;
+        menu.input(Action::GbaDown(Btn::Left));menu.selected=1;menu.input(Action::GbaDown(Btn::A));
+        assert_eq!(menu.code,Some(Field::Unlock),"the old code first");
+        submit_code(&mut menu,&CODE);wait(&mut menu);
+        assert_eq!(network_vault::method(root.path()),Some(Method::NoCode));
+        assert_eq!(menu.secrets.ssid,"Home-5G","the saved network survives");
+    }
+
     #[test]
     fn required_startup_pin_cannot_be_skipped_even_without_network_features() {
         let root=tempfile::tempdir().unwrap();let mut menu=Menu::new(root.path().into());pin(&mut menu);

@@ -3584,7 +3584,7 @@ impl App {
             | QuickRow::SecurityPin | QuickRow::Updates => {
                 let achievement_rom=self.seated_cart().map(|cart|cart.rom.clone());
                 if let Some(menu) = &mut self.network {
-                    if row == QuickRow::PlayAchievements {menu.open_current_achievements(achievement_rom);}else if row == QuickRow::Updates {menu.open_updates();}else if row == QuickRow::Wifi { menu.open_wifi(); } else if row == QuickRow::SecurityPin {menu.open_security();} else { menu.open_achievements_for(achievement_rom); }
+                    if row == QuickRow::PlayAchievements {menu.open_current_achievements(achievement_rom);}else if row == QuickRow::Updates {menu.open_updates();}else if row == QuickRow::Wifi { menu.open_network(); } else if row == QuickRow::SecurityPin {menu.open_security();} else { menu.open_achievements_for(achievement_rom); }
                 }
             }
             QuickRow::CartStudio => self.open_studio(),

@@ -21,8 +21,9 @@ Use the D-pad to select a tile, <kbd>A</kbd> to open its card and <kbd>B</kbd> t
 
 **Device code** is first in **General**. Choose a button sequence of six or more presses (Start finishes setup) or a keyboard passphrase of at least twelve characters. Credentials are always encrypted. Wi-Fi and RetroAchievements stay disabled without a code; existing shorter codes must be upgraded before network access. Six- and seven-button codes get a short warning because longer unpredictable secrets are stronger.
 
-**Startup access** can require the code to use the launcher or allow games while
-credentials stay locked. Skipping optional startup unlock shows “Saved credentials are locked.” The SD card and games remain accessible; only credentials are encrypted.
+**Startup access** can require the code to use the launcher (**Require code**), or leave it until it is needed (**Ask when needed**): then no code is asked at startup, your game resumes straight away, and the code is asked the first time you open Network or turn on Wi-Fi, achievements or sharing. The SD card and games remain accessible; only credentials are encrypted.
+
+**Unlock with → No code** saves Wi-Fi and RetroAchievements credentials without a code (advance.sp). They open by themselves at startup and Wi-Fi reconnects without a prompt, but anyone holding the SD card can read them. It is refused while Parental controls use the Device code; set a separate parent code first.
 Parental controls can use this code or a separate four-button parent code.
 See [Code setup, storage and reset](RETROACHIEVEMENTS.md#device-code-and-saved-credentials).
 
