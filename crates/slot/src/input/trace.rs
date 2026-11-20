@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use super::evdev::{
-    code_to_btn, device_name, pick_devices, Ev, ABS_HAT0X, ABS_HAT0Y, ABS_LSX, ABS_LSY, EV_ABS,
+    code_to_btn, device_name, layout_of, pick_devices, Layout, Ev, ABS_HAT0X, ABS_HAT0Y, ABS_LSX, ABS_LSY, EV_ABS,
     EV_KEY, EV_SW, SW_LID,
 };
 
@@ -44,10 +44,18 @@ pub fn survey(dev: &Path, sys: &Path) -> Vec<String> {
                     .map(|s| s.trim().to_string())
                     .unwrap_or_else(|_| "-".to_string())
             };
+            let bus = std::fs::read_to_string(sys.join(&*file).join("device/id/bustype"))
+                .map(|s| s.trim().to_string())
+                .unwrap_or_else(|_| "-".to_string());
+            let layout = match layout_of(sys, node) {
+                Layout::Pad => "pad",
+                Layout::Handheld => "handheld",
+            };
             format!(
-                "{file} {state} name={:?} key=[{}] sw=[{}]",
+                "{file} {state} name={:?} bus={bus} layout={layout} key=[{}] abs=[{}] sw=[{}]",
                 device_name(sys, node),
                 cap("key"),
+                cap("abs"),
                 cap("sw")
             )
         })

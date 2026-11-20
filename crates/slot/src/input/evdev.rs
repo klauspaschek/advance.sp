@@ -134,9 +134,9 @@ pub fn code_to_btn(code: u16) -> Option<Btn> {
     })
 }
 
-const WANTED: [u16; 15] = [
-    0x130, 0x131, 0x132, 0x133, 0x134, 0x135, 0x136, 0x137, 0x138, 0x13a, 0x13b, 0x162, 115, 114,
-    116,
+const WANTED: [u16; 16] = [
+    0x130, 0x131, 0x132, 0x133, 0x134, 0x135, 0x136, 0x137, 0x138, 0x13a, 0x13b, 0x13c, 0x162, 115,
+    114, 116,
 ];
 
 pub use slot_power::has_bit;
@@ -175,4 +175,197 @@ pub fn device_name(sys: &Path, node: &Path) -> String {
         .and_then(|n| std::fs::read_to_string(sys.join(n).join("device/name")).ok())
         .map(|n| n.trim().to_string())
         .unwrap_or_else(|| node.display().to_string())
+}
+
+// External gamepads (Bluetooth, classic or LE) report Linux's standard gamepad codes, not the
+// handheld's own numbering. Ported from cartridge's input layer and adapted for slot: a pad is
+// player one alongside the handheld's buttons.
+
+pub const ABS_X: u16 = 0x00;
+pub const ABS_Y: u16 = 0x01;
+pub const ABS_Z: u16 = 0x02;
+pub const ABS_RZ: u16 = 0x05;
+pub const ABS_GAS: u16 = 0x09;
+pub const ABS_BRAKE: u16 = 0x0a;
+
+pub const BTN_SOUTH: u16 = 0x130;
+pub const KEY_BACK: u16 = 158;
+pub const KEY_HOMEPAGE: u16 = 172;
+
+/// Whose codes a node sends: the handheld's own, or an external pad's.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum Layout {
+    Handheld,
+    Pad,
+}
+
+/// A node on the Bluetooth bus (0005), or one made through `uhid` (Bluetooth LE pads, such as an
+/// Xbox controller on current firmware), or a USB pad (0003), is an external pad.
+pub fn layout_of(sys: &Path, node: &Path) -> Layout {
+    let Some(name) = node.file_name() else {
+        return Layout::Handheld;
+    };
+    let device = sys.join(name).join("device");
+    let bus = std::fs::read_to_string(device.join("id/bustype")).unwrap_or_default();
+    let real = std::fs::canonicalize(&device).unwrap_or_default();
+    let bus = bus.trim();
+    if bus == "0005" || bus == "0003" || real.to_string_lossy().contains("uhid") {
+        Layout::Pad
+    } else {
+        Layout::Handheld
+    }
+}
+
+/// Whether a node is a gamepad and not the media keys of headphones: it has the south button.
+pub fn is_gamepad(sys: &Path, node: &Path) -> bool {
+    let Some(name) = node.file_name() else {
+        return false;
+    };
+    std::fs::read_to_string(sys.join(name).join("device/capabilities/key"))
+        .is_ok_and(|keys| has_bit(&keys, BTN_SOUTH))
+}
+
+/// How a pad's face buttons are read: by the letter printed on them (Xbox A is A), or by where
+/// they sit (the east button is A, as on the handheld and a Nintendo pad).
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Default)]
+pub enum FaceButtons {
+    #[default]
+    Labels,
+    Positions,
+}
+
+/// An external pad's key code as a button.
+pub fn pad_code_to_btn(code: u16, faces: FaceButtons) -> Option<Btn> {
+    let by_position = faces == FaceButtons::Positions;
+    Some(match code {
+        0x130 => {
+            if by_position {
+                Btn::B
+            } else {
+                Btn::A
+            }
+        }
+        0x131 => {
+            if by_position {
+                Btn::A
+            } else {
+                Btn::B
+            }
+        }
+        0x133 => Btn::X,
+        0x134 => Btn::Y,
+        0x136 => Btn::L1,
+        0x137 => Btn::R1,
+        0x138 => Btn::L2,
+        0x139 => Btn::R2,
+        0x13a | KEY_BACK => Btn::Select,
+        0x13b => Btn::Start,
+        0x13c | KEY_HOMEPAGE => Btn::Menu,
+        // volume keys of Bluetooth headphones and pads
+        115 => Btn::VolUp,
+        114 => Btn::VolDown,
+        _ => return None,
+    })
+}
+
+pub fn to_raw_for(layout: Layout, faces: FaceButtons, ev: Ev) -> Option<RawEvent> {
+    if layout == Layout::Handheld || ev.kind != EV_KEY {
+        return to_raw(ev);
+    }
+    let btn = pad_code_to_btn(ev.code, faces)?;
+    match ev.value {
+        0 => Some(RawEvent::Up(btn)),
+        1 => Some(RawEvent::Down(btn)),
+        _ => None,
+    }
+}
+
+/// The reach of an axis, as the driver reports it.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub struct Range {
+    pub min: i32,
+    pub max: i32,
+}
+
+impl Range {
+    pub const STICK: Range = Range {
+        min: -32768,
+        max: 32767,
+    };
+    pub const TRIGGER: Range = Range { min: 0, max: 255 };
+
+    /// `value` on the handheld stick's scale, -4096 to 4096 with the rest at 0.
+    pub fn stick(self, value: i32) -> i32 {
+        let span = i64::from(self.max - self.min).max(1);
+        let mid = (i64::from(self.max) + i64::from(self.min)) / 2;
+        let scaled = (i64::from(value) - mid) * 8192 / span;
+        scaled.clamp(-4096, 4096) as i32
+    }
+
+    /// Whether a trigger reading is past half of its travel.
+    pub fn pressed(self, value: i32) -> bool {
+        (i64::from(value) - i64::from(self.min)) * 2 > i64::from(self.max - self.min)
+    }
+}
+
+/// Which axes carry a pad's analog triggers, left then right. Pads on the HID gamepad layout
+/// (an Xbox controller over Bluetooth LE) send them as brake and gas, with the right stick on
+/// Z and RZ; older drivers send the triggers on Z and RZ themselves.
+pub fn trigger_axes(sys: &Path, node: &Path) -> [u16; 2] {
+    let abs = node
+        .file_name()
+        .and_then(|n| std::fs::read_to_string(sys.join(n).join("device/capabilities/abs")).ok())
+        .unwrap_or_default();
+    if has_bit(&abs, ABS_BRAKE) || has_bit(&abs, ABS_GAS) {
+        [ABS_BRAKE, ABS_GAS]
+    } else {
+        [ABS_Z, ABS_RZ]
+    }
+}
+
+/// An external pad's axes: the left stick and the hat steer the d-pad, and an analog trigger
+/// past half its travel presses L2 or R2. The right stick has no use in a GB/GBA game.
+pub struct PadAxes {
+    stick: [Range; 2],
+    trigger_codes: [u16; 2],
+    triggers: [Range; 2],
+    held: [bool; 2],
+}
+
+impl PadAxes {
+    pub fn new(stick: [Range; 2], trigger_codes: [u16; 2], triggers: [Range; 2]) -> Self {
+        PadAxes {
+            stick,
+            trigger_codes,
+            triggers,
+            held: [false; 2],
+        }
+    }
+
+    pub fn feed(&mut self, hat: &mut Hat, ev: Ev) -> Vec<RawEvent> {
+        if let Some(t) = self.trigger_codes.iter().position(|c| *c == ev.code) {
+            let now = self.triggers[t].pressed(ev.value);
+            if now == self.held[t] {
+                return Vec::new();
+            }
+            self.held[t] = now;
+            let btn = [Btn::L2, Btn::R2][t];
+            return vec![if now {
+                RawEvent::Down(btn)
+            } else {
+                RawEvent::Up(btn)
+            }];
+        }
+        let (i, code) = match ev.code {
+            ABS_X => (0, ABS_LSX),
+            ABS_Y => (1, ABS_LSY),
+            ABS_HAT0X | ABS_HAT0Y => return hat.feed(ev),
+            _ => return Vec::new(),
+        };
+        hat.feed(Ev {
+            kind: ev.kind,
+            code,
+            value: self.stick[i].stick(ev.value),
+        })
+    }
 }

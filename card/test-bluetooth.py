@@ -51,7 +51,7 @@ case "$*" in
      case "$command" in
        default-agent) echo 'Default agent request successful';;
        'scan on') echo 'Discovery started';;
-       pair*) if [ "${MOCK_AUTH_PROMPT:-no}" = yes ]; then echo "[agent] Authorize pairing (yes/no):"; elif [ "${MOCK_PAIR_FAIL:-no}" = yes ]; then echo 'Failed to pair: org.bluez.Error.AuthenticationFailed'; else touch "$SLOT_ROOT/paired"; echo 'Pairing successful'; fi;;
+       pair*) if [ "${MOCK_AUTH_PROMPT:-no}" = yes ]; then echo "[agent] ${MOCK_AUTH_TEXT:-Authorize pairing} (yes/no):"; elif [ "${MOCK_PAIR_FAIL:-no}" = yes ]; then echo 'Failed to pair: org.bluez.Error.AuthenticationFailed'; else touch "$SLOT_ROOT/paired"; echo 'Pairing successful'; fi;;
        connect*)
          if [ "${MOCK_REQUIRE_TRUST:-no}" = yes ] && [ ! -f "$SLOT_ROOT/trusted" ]; then echo 'Failed to connect: org.bluez.Error.Rejected';
          else
@@ -59,6 +59,7 @@ case "$*" in
            touch "$SLOT_ROOT/audio-ready"
            echo 'Connection successful'
          fi;;
+       yes) touch "$SLOT_ROOT/paired"; echo 'Pairing successful';;
        quit) exit 0;;
      esac
    done;;
@@ -96,6 +97,7 @@ case "$*" in
    elif [ "${MOCK_INFO_FAIL_AFTER_PCM:-no}" = yes ] && [ -f "$SLOT_ROOT/pcm-count" ]; then
      echo 'Connected: yes'; exit 1
    else echo "Connected: ${MOCK_CONNECTED:-yes}"; fi
+   [ "${MOCK_ICON:-}" = "" ] || echo "Icon: $MOCK_ICON"
    echo "UUID: Audio Sink (${MOCK_UUID:-0000110b-0000-1000-8000-00805f9b34fb})";;
 esac
 ''')
@@ -685,6 +687,65 @@ esac
         self.assertFalse((config / 'bluetooth-enabled').exists())
         self.assertEqual(pref.read_text(), MAC)
         self.assertEqual((self.root / 'route').read_text(), route)
+
+    # Game controllers: paired from the Controllers menu, never routed as audio.
+    HID = '00001124-0000-1000-8000-00805f9b34fb'
+    HOGP = '00001812-0000-1000-8000-00805f9b34fb'
+
+    def test_controller_pairs_over_le_and_is_remembered_without_audio(self):
+        self.env.update(MOCK_PAIRED='no', MOCK_UUID=self.HOGP)
+        result = self.run_command('pad', MAC)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = (self.root / 'calls').read_text()
+        self.assertIn('session transport auto', calls)
+        self.assertIn('session pair ' + MAC, calls)
+        self.assertIn('trust ' + MAC, calls)
+        self.assertEqual((self.root / 'Config/bluetooth-pads').read_text().split(), [MAC])
+        self.assertFalse((self.root / 'Config/bluetooth-headphones').exists())
+        self.assertFalse((self.root / 'route').exists())
+
+    def test_controller_pairing_accepts_only_its_hid_service_prompt(self):
+        self.env.update(MOCK_PAIRED='no', MOCK_UUID=self.HID, MOCK_AUTH_PROMPT='yes',
+            MOCK_AUTH_TEXT='Authorize service ' + self.HID)
+        result = self.run_command('pad', MAC)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('session yes', (self.root / 'calls').read_text())
+
+    def test_controller_pairing_still_refuses_passkeys(self):
+        self.env.update(MOCK_PAIRED='no', MOCK_UUID=self.HID, MOCK_AUTH_PROMPT='yes',
+            MOCK_AUTH_TEXT='Confirm passkey 123456')
+        self.assertNotEqual(self.run_command('pad', MAC).returncode, 0)
+        calls = (self.root / 'calls').read_text()
+        self.assertNotIn('session yes', calls)
+        self.assertNotIn('trust ' + MAC, calls)
+        self.assertFalse((self.root / 'Config/bluetooth-pads').exists())
+
+    def test_headphone_pairing_never_accepts_a_hid_prompt(self):
+        self.env.update(MOCK_PAIRED='no', MOCK_AUTH_PROMPT='yes',
+            MOCK_AUTH_TEXT='Authorize service ' + self.HID)
+        self.assertNotEqual(self.run_command('connect', MAC).returncode, 0)
+        self.assertNotIn('session yes', (self.root / 'calls').read_text())
+
+    def test_headphones_are_not_accepted_as_a_controller(self):
+        self.assertNotEqual(self.run_command('pad', MAC).returncode, 0)
+        self.assertNotIn('trust ' + MAC, (self.root / 'calls').read_text())
+        self.assertFalse((self.root / 'Config/bluetooth-pads').exists())
+
+    def test_forget_removes_a_controller(self):
+        self.env['MOCK_UUID'] = self.HID
+        self.assertEqual(self.run_command('pad', MAC).returncode, 0)
+        self.assertEqual(self.run_command('forget', MAC).returncode, 0)
+        self.assertFalse((self.root / 'Config/bluetooth-pads').exists())
+
+    def test_controller_scan_includes_le_but_headphone_scan_stays_classic(self):
+        self.env['MOCK_ICON'] = 'input-gaming'
+        result = self.run_command('pad-scan')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('KIND ' + MAC + ' input-gaming', result.stdout)
+        self.assertIn('session transport auto', (self.root / 'calls').read_text())
+        (self.root / 'calls').unlink()
+        self.assertEqual(self.run_command('scan').returncode, 0)
+        self.assertIn('session transport bredr', (self.root / 'calls').read_text())
 
 if __name__ == '__main__':
     unittest.main()

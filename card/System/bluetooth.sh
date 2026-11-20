@@ -10,6 +10,9 @@ LOGDIR="$ROOT/Bluetooth"
 VERB=${1:-}
 TARGET=${2:-}
 OFF="$ROOT/Config/bluetooth-off"
+# Game controllers paired through the Controllers menu, one address per line.
+PADS="$ROOT/Config/bluetooth-pads"
+pad_verb() { [ "$VERB" = pad ] || [ "$VERB" = pad-scan ]; }
 ENABLED="$ROOT/Config/bluetooth-enabled"
 automatic() { [ "$VERB" = restore ] || [ "$VERB" = reconnect ]; }
 # BaseOS owns hardware attachment. Other systems must already expose a BlueZ
@@ -366,8 +369,10 @@ wait_text() {
             fail 'Bluetooth audio connection failed'
         fi
         if grep -q 'Authorize service\|Authorize pairing\|Confirm passkey\|Enter PIN code\|Enter passkey' "$WORK/session-output"; then
-            send no
-            fail 'This device requires pairing confirmation that slot cannot safely provide'
+            if ! pad_authorize; then
+                send no
+                fail 'This device requires pairing confirmation that slot cannot safely provide'
+            fi
         fi
         if grep -q 'Failed to register agent\|Failed to request default agent' "$WORK/session-output"; then
             fail 'BlueZ could not register the pairing agent'
@@ -377,11 +382,28 @@ wait_text() {
         sleep "${SLOT_BT_POLL_INTERVAL:-1}"
     done
 }
+# While a controller chosen in the Controllers menu pairs, BlueZ asks the agent to authorize
+# its HID service (classic 00001124 or LE 00001812) before the device is trusted. Accept
+# exactly those prompts, once each, and only in a controller pairing; anything else is refused.
+PAD_ANSWERS=0
+pad_authorize() {
+    [ "$VERB" = pad ] || return 1
+    prompts=$(grep -E 'Authorize service|Authorize pairing|Confirm passkey|Enter PIN code|Enter passkey' "$WORK/session-output" || true)
+    others=$(printf '%s\n' "$prompts" | grep -v '^$' | grep -Evic 'Authorize service 0000(1124|1812)-' || true)
+    [ "$others" = 0 ] || return 1
+    asked=$(printf '%s\n' "$prompts" | grep -Eic 'Authorize service 0000(1124|1812)-' || true)
+    while [ "$PAD_ANSWERS" -lt "$asked" ]; do
+        log 'Accepting the controller HID service'
+        send yes
+        PAD_ANSWERS=$((PAD_ANSWERS + 1))
+    done
+    return 0
+}
 start_session() {
     STAGE='pairing agent registration'
     mkfifo "$WORK/input"
     : > "$WORK/session-output"
-    if [ "$VERB" = connect ]; then
+    if [ "$VERB" = connect ] || [ "$VERB" = pad ]; then
         (ulimit -f 128; exec "$BT" --agent NoInputNoOutput) < "$WORK/input" > "$WORK/session-output" 2>&1 &
     else
         (ulimit -f 128; exec "$BT") < "$WORK/input" > "$WORK/session-output" 2>&1 &
@@ -389,14 +411,20 @@ start_session() {
     SESSION_PID=$!
     exec 3> "$WORK/input"
     SESSION_OPEN=1
-    if [ "$VERB" = connect ]; then
+    if [ "$VERB" = connect ] || [ "$VERB" = pad ]; then
         wait_text 'Agent registered' 12
         send default-agent
         wait_text 'Default agent request successful' 10
     fi
     STAGE='headphone discovery'
+    transport=bredr
+    if pad_verb; then
+        # Current Xbox controllers and many others pair over Bluetooth LE.
+        STAGE='controller discovery'
+        transport=auto
+    fi
     send 'menu scan'
-    send 'transport bredr'
+    send "transport $transport"
     send back
     send 'scan on'
     wait_text 'Discovery started' 10
@@ -417,8 +445,10 @@ wait_property() {
             # bluetoothctl prompts do not identify the requesting device reliably.
             # Never auto-approve an ambiguous request or guess a legacy PIN.
             if grep -q 'Authorize service\|Authorize pairing\|Confirm passkey\|Enter PIN code\|Enter passkey' "$WORK/session-output"; then
-                send no
-                fail 'This device requires pairing confirmation that slot cannot safely provide'
+                if ! pad_authorize; then
+                    send no
+                    fail 'This device requires pairing confirmation that slot cannot safely provide'
+                fi
             fi
         fi
         n=$((n + 1))
@@ -451,6 +481,9 @@ emit_list() {
         printf '%s\n' "$info" | grep -q '^[[:space:]]*Paired: yes[[:space:]]*$' && paired=yes
         printf '%s\n' "$info" | grep -q '^[[:space:]]*Connected: yes[[:space:]]*$' && connected=yes
         printf 'STATE %s %s %s\n' "$address" "$paired" "$connected"
+        # BlueZ's icon names the device kind, e.g. input-gaming or audio-headset.
+        icon=$(printf '%s\n' "$info" | sed -n 's/^[[:space:]]*Icon: \([a-z-]*\).*/\1/p' | head -n 1)
+        [ -z "$icon" ] || printf 'KIND %s %s\n' "$address" "$icon"
     done
     selected=''
     [ ! -r "$ROUTE" ] || selected=$(cat "$ROUTE")
@@ -542,13 +575,55 @@ connect() {
     route "bluealsa:DEV=$TARGET,PROFILE=a2dp"
     stop_session
 }
+connect_pad() {
+    valid_mac "$TARGET" || fail 'Invalid Bluetooth address'
+    start
+    check_cancel
+    info=$(bt info "$TARGET") || true
+    if ! printf '%s\n' "$info" | grep -q '^[[:space:]]*Paired: yes[[:space:]]*$'; then
+        start_session
+        STAGE=pairing
+        send "pair $TARGET"
+        wait_property Paired 45
+        send 'scan off'
+    fi
+    STAGE='controller service discovery'
+    n=0
+    while :; do
+        check_cancel
+        info=$(bt info "$TARGET") || true
+        printf '%s\n' "$info" | grep -Eqi '^[[:space:]]*UUID:.*0000(1124|1812)-0000-1000-8000-00805f9b34fb' && break
+        n=$((n + 1))
+        [ "$n" -lt 15 ] || fail 'This device is not a game controller'
+        sleep "${SLOT_BT_POLL_INTERVAL:-1}"
+    done
+    check_cancel
+    # Trusted controllers reconnect by themselves whenever Bluetooth is on.
+    bt trust "$TARGET" >/dev/null
+    STAGE='controller connection'
+    if ! printf '%s\n' "$info" | grep -q '^[[:space:]]*Connected: yes[[:space:]]*$'; then
+        if [ -n "$SESSION_PID" ]; then
+            send "connect $TARGET"
+        else
+            connection=$(bt connect "$TARGET") || true
+            CONNECT_REASON=$(printf '%s\n' "$connection" | sed -n 's/.*Failed to connect: //p' | tail -n 1)
+        fi
+    fi
+    wait_property Connected 20
+    mkdir -p "$ROOT/Config"
+    rm -f "$OFF"
+    if ! grep -qix "$TARGET" "$PADS" 2>/dev/null; then
+        printf '%s\n' "$TARGET" >> "$PADS"
+    fi
+    stop_session
+}
 trap cleanup 0
 trap 'ERROR="Bluetooth operation interrupted"; exit 1' 1 2 15
 check_cancel
 automatic && { [ ! -f "$PREF" ] || [ -f "$OFF" ]; } && { rm -f "$SESSION_LOG"; exit 0; }
 # Read-only operations use their own scratch directory and never hold the radio lock.
 case "$VERB" in
-    connect|forget|fallback) valid_mac "$TARGET" || fail 'Invalid Bluetooth address';;
+    connect|forget|fallback|pad) valid_mac "$TARGET" || fail 'Invalid Bluetooth address';;
     usb) printf '%s\n' "$TARGET" | grep -Eq '^plughw:CARD=[A-Za-z0-9_]{1,32},DEV=[0-9]{1,3}$' || fail 'Invalid USB audio output';;
 esac
 case "$VERB" in
@@ -614,6 +689,15 @@ case "$VERB" in
         stop_session
         ;;
     connect) connect; emit_list ;;
+    pad-scan)
+        start
+        rm -f "$OFF"
+        start_session
+        sleep "${SLOT_BT_SCAN_SECONDS:-12}"
+        emit_list
+        stop_session
+        ;;
+    pad) connect_pad; emit_list ;;
     fallback)
         STAGE='disconnected device output'
         # A delayed disconnect report must not replace a newer manual choice.
@@ -679,6 +763,10 @@ case "$VERB" in
     forget)
         STAGE='forget pairing'
         if [ -f "$PREF" ] && [ "$(cat "$PREF")" = "$TARGET" ]; then route ''; rm -f "$PREF"; fi
+        if [ -f "$PADS" ]; then
+            grep -vix "$TARGET" "$PADS" > "$PADS.$$" || true
+            if [ -s "$PADS.$$" ]; then mv -f "$PADS.$$" "$PADS"; else rm -f "$PADS.$$" "$PADS"; fi
+        fi
         bt disconnect "$TARGET" >/dev/null || true
         bt remove "$TARGET" >/dev/null
         emit_list
