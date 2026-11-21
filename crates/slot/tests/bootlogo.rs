@@ -56,8 +56,13 @@ fn a_portrait_panel_gets_the_wordmark_turned_a_quarter_counter_clockwise() {
 }
 
 #[test]
-fn a_wordmark_bigger_than_the_panel_is_refused() {
-    assert!(compose(&mark(), (4, 3)).is_none());
+fn a_wordmark_bigger_than_the_panel_is_shrunk_to_fit_whole() {
+    let logo = compose(&mark(), (4, 3)).unwrap();
+    assert_eq!((logo.width, logo.height), (4, 3));
+    // shrunk to 4x2, set at the top of a panel one row taller: that row is the background
+    assert_eq!((0..4).map(|x| at(&logo, x, 2)).collect::<Vec<_>>(), [BG; 4]);
+    // a 4x2 picture of the 5x3 mark, its ink blended rather than dropped
+    assert!(logo.rgb.iter().any(|c| c[0] > BG[0] + 40), "the ink survives the shrinking");
 }
 
 #[test]
@@ -134,9 +139,14 @@ fn the_shipped_logo_fills_the_rg_sp_screen_as_drawn() {
     assert_eq!((m.width, m.height), (720, 480), "drawn for the RG SP's whole screen");
     let shown = compose(&m, (720, 480)).unwrap();
     assert!(shown.rgb == m.rgb, "shown exactly as drawn, not moved or cut");
-    // advance.sp is made for the RG SP: a screen the logo does not fit keeps BaseOS's own
-    for panel in [(640, 480), (480, 640)] {
-        assert!(compose(&m, panel).is_none(), "{panel:?}");
+    // other screens get it whole, shrunk where it is too big, between black bands
+    for panel in [(640, 480), (720, 720), (480, 640)] {
+        let shown = compose(&m, panel).unwrap();
+        assert_eq!((shown.width, shown.height), panel);
+        assert_eq!(at(&shown, 0, 0), [0, 0, 0], "{panel:?}");
+        assert_eq!(at(&shown, panel.0 - 1, panel.1 - 1), [0, 0, 0], "{panel:?}");
+        let lit = shown.rgb.iter().filter(|c| c[0] > 128).count();
+        assert!(lit > 4000, "{panel:?}: the lettering is still there, {lit} pixels");
     }
 }
 

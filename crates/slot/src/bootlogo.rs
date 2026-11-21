@@ -103,6 +103,42 @@ fn turned(img: &Bmp) -> Bmp {
     }
 }
 
+/// `img` made smaller by averaging every source pixel under each new one, weighted by how much
+/// of it the new pixel covers: thin lines (the logo's scanlines) blend instead of vanishing.
+fn shrunk(img: &Bmp, width: usize, height: usize) -> Bmp {
+    let (sx, sy) = (img.width as f64 / width as f64, img.height as f64 / height as f64);
+    // Which source pixels a new pixel covers along one axis, and by how much.
+    let spans = |n: usize, step: f64, limit: usize| -> Vec<Vec<(usize, f64)>> {
+        (0..n)
+            .map(|i| {
+                let (from, to) = (i as f64 * step, (i as f64 + 1.0) * step);
+                (from.floor() as usize..(to.ceil() as usize).min(limit))
+                    .map(|j| (j, (to.min(j as f64 + 1.0) - from.max(j as f64)).max(0.0)))
+                    .collect()
+            })
+            .collect()
+    };
+    let (xs, ys) = (spans(width, sx, img.width), spans(height, sy, img.height));
+    let mut rgb = Vec::with_capacity(width * height);
+    for row in &ys {
+        for column in &xs {
+            let (mut sum, mut weight) = ([0.0f64; 3], 0.0);
+            for &(y, wy) in row {
+                for &(x, wx) in column {
+                    let w = wx * wy;
+                    let c = img.rgb[y * img.width + x];
+                    for k in 0..3 {
+                        sum[k] += f64::from(c[k]) * w;
+                    }
+                    weight += w;
+                }
+            }
+            rgb.push(sum.map(|v| (v / weight).round().clamp(0.0, 255.0) as u8));
+        }
+    }
+    Bmp { width, height, rgb }
+}
+
 pub fn compose(wordmark: &Bmp, (width, height): (usize, usize)) -> Option<Bmp> {
     let turned_mark;
     let mark = if height > width {
@@ -111,10 +147,20 @@ pub fn compose(wordmark: &Bmp, (width, height): (usize, usize)) -> Option<Bmp> {
     } else {
         wordmark
     };
-    if mark.width > width || mark.height > height {
-        return None;
-    }
-    let mut rgb = vec![*mark.rgb.first()?; width * height];
+    // A logo bigger than the panel is shrunk to fit it whole, keeping its proportions; the rest
+    // of the screen is the logo's background colour, as around a smaller logo.
+    // the background is the logo's own corner, taken before any shrinking blends it
+    let background = *mark.rgb.first()?;
+    let shrunk_mark;
+    let mark = if mark.width > width || mark.height > height {
+        let scale = (width as f64 / mark.width as f64).min(height as f64 / mark.height as f64);
+        let fit = |side: usize, room: usize| ((side as f64 * scale).floor() as usize).clamp(1, room);
+        shrunk_mark = shrunk(mark, fit(mark.width, width), fit(mark.height, height));
+        &shrunk_mark
+    } else {
+        mark
+    };
+    let mut rgb = vec![background; width * height];
     let (x0, y0) = ((width - mark.width) / 2, (height - mark.height) / 2);
     for y in 0..mark.height {
         let at = (y0 + y) * width + x0;
