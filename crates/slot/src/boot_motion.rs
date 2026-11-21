@@ -6,14 +6,26 @@ const DROP_MS: u64 = 510;
 const LAND_MS: u64 = 1010;
 // The ADVANCE·SP wordmark's cream.
 const INK: [u8; 3] = [242,232,198];
-// Seven pieces of the firmware wordmark, cut where its slanted, touching letters are thinnest
-// (A | D | V | AN | CE· | S | P); the gap before SP is blank.
-const LETTER_EDGES: [f32; 8] = [0.0, 61.0, 113.0, 153.0, 205.0, 261.0, 303.0, 363.0];
+// Seven pieces of the firmware wordmark, measured from its left edge (the logo's ink, not the
+// whole screen it is drawn on), cut where its slanted, touching letters are thinnest
+// (A | D | V | AN | CE· | S | P); the gaps around the dot and between S and P are blank.
+const LETTER_EDGES: [f32; 8] = [0.0, 64.0, 131.0, 201.0, 292.0, 443.0, 550.0, 650.0];
 /// How far from the background a pixel may be and still count as background: the wordmark's
 /// near-black specks must not draw as dark dots.
 const BACKGROUND_TOLERANCE: u8 = 24;
 fn is_background(rgb: [u8; 3], background: [u8; 3]) -> bool {
     rgb.iter().zip(background).all(|(c, b)| c.abs_diff(b) <= BACKGROUND_TOLERANCE)
+}
+/// Where the wordmark's ink lies in the firmware logo: `[x, y, width, height]`. The logo may be
+/// the whole screen with the wordmark in its middle; the animation moves only the wordmark.
+fn ink_bounds(logo: &crate::bootlogo::Bmp) -> Option<[usize; 4]> {
+    let background = *logo.rgb.first()?;
+    let ink = |x: usize, y: usize| !is_background(logo.rgb[y * logo.width + x], background);
+    let columns: Vec<usize> = (0..logo.width).filter(|&x| (0..logo.height).any(|y| ink(x, y))).collect();
+    let rows: Vec<usize> = (0..logo.height).filter(|&y| (0..logo.width).any(|x| ink(x, y))).collect();
+    let (x0, x1) = (*columns.first()?, *columns.last()?);
+    let (y0, y1) = (*rows.first()?, *rows.last()?);
+    Some([x0, y0, x1 - x0 + 1, y1 - y0 + 1])
 }
 fn smooth(t: f32) -> f32 { let t=t.clamp(0.0,1.0); t*t*t*(t*(t*6.0-15.0)+10.0) }
 fn mix(a: f32,b: f32,t: f32)->f32 { a+(b-a)*t }
@@ -41,7 +53,9 @@ fn blob_pose(ms:u64,canvas:Canvas)->[f32;4] {
     [canvas.centred(w),cy-h/2.0,w,h]
 }
 
-pub struct BootMotion { tex: TexId, blob: TexId, w: f32, h: f32 }
+/// The wordmark cut out of the firmware logo (`w` by `h`, at `at` within it), and the logo's
+/// whole size (`full`), to start exactly where the firmware showed it.
+pub struct BootMotion { tex: TexId, blob: TexId, w: f32, h: f32, at: [f32; 2], full: [f32; 2] }
 impl BootMotion {
     pub fn upload(c: &mut Compositor) -> Option<Self> {
         // One small mark texture shared by all seven glyphs, plus a 64px blob.
@@ -49,33 +63,46 @@ impl BootMotion {
         // texture uploads, or offscreen pass during the animation.
         let logo=crate::bootlogo::decode(include_bytes!("../../../card/System/bootlogo.bmp"))?;
         let background=*logo.rgb.first()?;
-        let rgba:Vec<u8>=logo.rgb.iter().flat_map(|rgb| [rgb[0],rgb[1],rgb[2],if is_background(*rgb,background) {0}else{255}]).collect();
+        let [x0,y0,w,h]=ink_bounds(&logo)?;
+        let rgba:Vec<u8>=(y0..y0+h).flat_map(|y| logo.rgb[y*logo.width+x0..y*logo.width+x0+w].iter())
+            .flat_map(|rgb| [rgb[0],rgb[1],rgb[2],if is_background(*rgb,background) {0}else{255}]).collect();
         let blob:Vec<u8>=(0..64).flat_map(|y|(0..64).flat_map(move |x| {
             let distance=(x as f32+0.5-32.0).hypot(y as f32+0.5-32.0);
             [INK[0],INK[1],INK[2],((32.5-distance).clamp(0.0,1.0)*255.0).round()as u8]
         })).collect();
-        Some(Self{tex:c.create_texture(logo.width as u32,logo.height as u32,&rgba),blob:c.create_texture(64,64,&blob),w:logo.width as f32,h:logo.height as f32})
+        Some(Self{tex:c.create_texture(w as u32,h as u32,&rgba),blob:c.create_texture(64,64,&blob),
+            w:w as f32,h:h as f32,at:[x0 as f32,y0 as f32],full:[logo.width as f32,logo.height as f32]})
+    }
+    /// Where the firmware drew the wordmark on this canvas, `[x, y, scale]`: the logo centred, and
+    /// shrunk whole when it is bigger than the screen, as `bootlogo::compose` builds it.
+    fn placed(&self, canvas: Canvas) -> [f32; 3] {
+        let scale=(canvas.w/self.full[0]).min(canvas.h/self.full[1]).min(1.0);
+        let left=((canvas.w-(self.full[0]*scale).floor())/2.0).floor();
+        let top=((canvas.h-(self.full[1]*scale).floor())/2.0).floor();
+        [left+self.at[0]*scale,top+self.at[1]*scale,scale]
     }
     pub fn draw(&self, ms:u64, canvas:Canvas, out:&mut Vec<Draw>) {
         if ms>=BOOT_MS {return;}
         let ground=1.0-reveal(ms);
         if ground>0.0 {out.push(Draw::Rect{x:0.0,y:0.0,w:canvas.w,h:canvas.h,colour:[11.0/255.0,14.0/255.0,17.0/255.0,ground]});}
-        let origin=[canvas.centred(self.w).floor(),((canvas.h-self.h)/2.0).floor()];
+        let [ox,oy,scale]=self.placed(canvas);
+        let origin=[ox,oy];
+        let (mark_w,mark_h)=(self.w*scale,self.h*scale);
         if ms==0 {
-            out.push(Draw::Tex{x:origin[0],y:origin[1],w:self.w,h:self.h,tex:self.tex,alpha:1.0});
+            out.push(Draw::Tex{x:origin[0],y:origin[1],w:mark_w,h:mark_h,tex:self.tex,alpha:1.0});
             return;
         }
         let morph=smooth((ms as f32-220.0)/220.0);
         if morph<1.0 {
             for (index,edges) in LETTER_EDGES.windows(2).enumerate() {
-                let centre=(edges[0]+edges[1])/2.0;
+                let centre=(edges[0]+edges[1])/2.0*scale;
                 // The middle gathers first; the outer letters follow within
                 // 27 ms, retaining a single connected visual rhythm.
                 let gather=spatial(ms as f32-40.0-(index as f32-3.0).abs()*9.0);
                 let scale_x=mix(1.0,0.14,gather);let scale_y=mix(1.0,0.18,gather);
-                let w=(edges[1]-edges[0])*scale_x;let h=self.h*scale_y;
+                let w=(edges[1]-edges[0])*scale*scale_x;let h=mark_h*scale_y;
                 let cx=mix(origin[0]+centre,canvas.w/2.0,gather);
-                let cy=mix(origin[1]+self.h/2.0,canvas.h/2.0,gather);
+                let cy=mix(origin[1]+mark_h/2.0,canvas.h/2.0,gather);
                 out.push(Draw::Part{x:cx-w/2.0,y:cy-h/2.0,w,h,tex:self.tex,alpha:1.0-morph,uv:[edges[0]/self.w,0.0,(edges[1]-edges[0])/self.w,1.0]});
             }
         }
@@ -111,17 +138,27 @@ impl BootMotion {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn logo()->crate::bootlogo::Bmp {crate::bootlogo::decode(include_bytes!("../../../card/System/bootlogo.bmp")).unwrap()}
     fn motion()->BootMotion {
-        let logo=crate::bootlogo::decode(include_bytes!("../../../card/System/bootlogo.bmp")).unwrap();
-        BootMotion{tex:TexId::from_raw(1),blob:TexId::from_raw(2),w:logo.width as f32,h:logo.height as f32}
+        let logo=logo();let [x,y,w,h]=ink_bounds(&logo).unwrap();
+        BootMotion{tex:TexId::from_raw(1),blob:TexId::from_raw(2),w:w as f32,h:h as f32,at:[x as f32,y as f32],full:[logo.width as f32,logo.height as f32]}
     }
+    /// The logo as the firmware shows it on a `width` by `height` screen.
+    fn firmware(width:usize,height:usize)->crate::bootlogo::Bmp {crate::bootlogo::compose(&logo(),(width,height)).unwrap()}
     #[test]
-    fn handoff_starts_at_firmware_size_and_leaves_no_overlay() {
+    fn handoff_starts_where_the_firmware_drew_the_wordmark_and_leaves_no_overlay() {
         let motion=motion();
-        for width in [640.0,720.0] {
-            let canvas=Canvas{w:width,h:480.0};let mut out=vec![];
+        for (width,height) in [(720usize,480usize),(640,480)] {
+            let canvas=Canvas{w:width as f32,h:height as f32};let mut out=vec![];
             motion.draw(0,canvas,&mut out);
-            assert!(matches!(out[1],Draw::Tex{x,y,w,h,alpha:1.0,..} if w==motion.w&&h==motion.h&&x==((width-w)/2.0).floor()&&y==((480.0-h)/2.0).floor()));
+            let Draw::Tex{x,y,w,h,alpha,..}=out[1] else {panic!("{:?}",out[1])};
+            assert_eq!(alpha,1.0);
+            // the drawn wordmark covers the firmware's ink, to within a pixel of shrinking
+            let shown=firmware(width,height);
+            let [ix,iy,iw,ih]=ink_bounds(&shown).unwrap();
+            for (drawn,ink) in [(x,ix),(y,iy),(x+w,ix+iw),(y+h,iy+ih)] {
+                assert!((drawn-ink as f32).abs()<=1.5,"{width}x{height}: drawn {drawn}, firmware ink {ink}");
+            }
             for ms in [BOOT_MS,u64::MAX] {out.clear();motion.draw(ms,canvas,&mut out);assert!(out.is_empty());}
         }
     }
@@ -147,13 +184,14 @@ mod tests {
     }
     #[test]
     fn letter_crops_cover_the_whole_mark_and_cut_only_where_it_is_thin() {
-        let logo=crate::bootlogo::decode(include_bytes!("../../../card/System/bootlogo.bmp")).unwrap();
+        let logo=logo();
+        let [x0,y0,width,height]=ink_bounds(&logo).unwrap();
         assert_eq!(LETTER_EDGES[0],0.0);
-        assert_eq!(logo.width as f32,*LETTER_EDGES.last().unwrap());
+        assert_eq!(width as f32,*LETTER_EDGES.last().unwrap(),"the pieces end where the wordmark does");
         assert!(LETTER_EDGES.windows(2).all(|e|e[0]<e[1]));
         let background=logo.rgb[0];
-        let ink=|x:usize|(0..logo.height).filter(|y|!is_background(logo.rgb[y*logo.width+x],background)).count();
-        let busiest=(0..logo.width).map(ink).max().unwrap();
+        let ink=|x:usize|(y0..y0+height).filter(|y|!is_background(logo.rgb[y*logo.width+x0+x],background)).count();
+        let busiest=(0..width).map(ink).max().unwrap();
         for &edge in &LETTER_EDGES[1..7] {
             assert!(ink(edge as usize)*2<=busiest,"letter crop at {edge} crosses a thick stroke");
         }
