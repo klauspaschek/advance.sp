@@ -11,7 +11,7 @@ struct Link {
 struct Reply {
     generation: u64,
     requested: u8,
-    result: Result<(Link, u8), ()>,
+    result: Result<(Link, u8), &'static str>,
 }
 #[derive(Default)]
 pub struct Volume {
@@ -21,6 +21,9 @@ pub struct Volume {
     observed: Option<u8>,
     pending: Option<Receiver<Reply>>,
     next: Option<Instant>,
+    /// Why the headset's volume could not be linked, as last logged: a reason is logged
+    /// once, when it changes, not on every retry.
+    reason: Option<&'static str>,
 }
 impl Volume {
     pub fn software_volume(&self, address: Option<&str>, volume: u8) -> u8 {
@@ -39,7 +42,9 @@ impl Volume {
             self.generation = self.generation.wrapping_add(1);
             self.link = None;
             self.observed = None;
-            self.next = None;
+            self.reason = None;
+            // a fresh connection needs a moment before its volume can be read
+            self.next = Some(Instant::now() + Duration::from_secs(2));
         }
         let mut feedback = None;
         if let Some(reply) = self.pending.as_ref().and_then(|r| r.try_recv().ok()) {
@@ -51,6 +56,7 @@ impl Volume {
                             // once per connection: which volume control the headset offers
                             eprintln!("slot: bluetooth volume: the headset's own volume follows slot's, now {level}%");
                         }
+                        self.reason = None;
                         self.link = Some(link);
                         self.observed = Some(level);
                         if requested == reply.requested {
@@ -58,9 +64,10 @@ impl Volume {
                         }
                         self.next = Some(Instant::now() + Duration::from_millis(750));
                     }
-                    Err(()) => {
-                        if self.link.is_some() || self.observed.is_none() && self.next.is_none() {
-                            eprintln!("slot: bluetooth volume: the headset offers no volume control: slot lowers the sound, the headset's own volume stays as set on it");
+                    Err(why) => {
+                        if self.reason != Some(why) {
+                            eprintln!("slot: bluetooth volume: not linked ({why}): slot lowers the sound itself, the headset's own volume stays as set on it; retrying every 10 s");
+                            self.reason = Some(why);
                         }
                         self.link = None;
                         self.observed = None;
@@ -206,7 +213,7 @@ fn write(bus: &Bus, link: &Link, value: u8) -> Result<u8, ()> {
     }
     Ok(actual)
 }
-fn sync(address: &str, existing: Option<Link>, level: u8, changed: bool) -> Result<(Link, u8), ()> {
+fn sync(address: &str, existing: Option<Link>, level: u8, changed: bool) -> Result<(Link, u8), &'static str> {
     sync_with(&call, address, existing, level, changed)
 }
 fn sync_with(
@@ -215,14 +222,15 @@ fn sync_with(
     existing: Option<Link>,
     level: u8,
     changed: bool,
-) -> Result<(Link, u8), ()> {
+) -> Result<(Link, u8), &'static str> {
     let first = existing.is_none();
     let link = match existing {
         Some(link) => link,
-        None => discover(bus, address)?,
+        None => discover(bus, address).map_err(|_| "no Bluetooth audio transport for it yet")?,
     };
     let result = (|| {
-        let current = remote(bus, &link)?; // Optional property: absence means no native support.
+        // Optional property: absence means no native support (or none negotiated yet).
+        let current = remote(bus, &link).map_err(|_| "the headset reports no volume of its own (AVRCP absolute volume)")?;
         let value = if first {
             let soft = get(
                 bus,
@@ -230,7 +238,7 @@ fn sync_with(
                 &link.pcm,
                 "org.bluealsa.PCM1",
                 "SoftVolume",
-            )?;
+            ).map_err(|_| "BlueALSA has no volume for this headset")?;
             let target = if soft.split_whitespace().last() == Some("true") {
                 // Migration: preserve both existing attenuation stages instead of
                 // suddenly removing Slot's software gain or maxing the headset.
@@ -238,10 +246,10 @@ fn sync_with(
             } else {
                 current.min(native(level))
             };
-            set(bus, &link, "SoftVolume", "variant:boolean:false")?;
-            write(bus, &link, target)?
+            set(bus, &link, "SoftVolume", "variant:boolean:false").map_err(|_| "BlueALSA refused to hand the volume to the headset")?;
+            write(bus, &link, target).map_err(|_| "the headset did not take the volume set")?
         } else if changed {
-            write(bus, &link, native(level))?
+            write(bus, &link, native(level)).map_err(|_| "the headset did not take the volume set")?
         } else {
             current
         };
