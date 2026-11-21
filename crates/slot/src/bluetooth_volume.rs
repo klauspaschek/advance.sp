@@ -23,6 +23,8 @@ struct Reply {
     generation: u64,
     requested: u8,
     result: Result<Synced, &'static str>,
+    /// The D-Bus error behind a failed link, for the log.
+    detail: String,
 }
 #[derive(Default)]
 pub struct Volume {
@@ -84,7 +86,8 @@ impl Volume {
                     }
                     Err(why) => {
                         if self.reason != Some(why) {
-                            eprintln!("slot: bluetooth volume: not linked ({why}): slot lowers the sound itself, the headset's own volume stays as set on it; retrying every 5 s");
+                            let detail = if reply.detail.is_empty() { String::new() } else { format!(": {}", reply.detail) };
+                            eprintln!("slot: bluetooth volume: not linked ({why}{detail}): slot lowers the sound itself, the headset's own volume stays as set on it; retrying every 5 s");
                             self.reason = Some(why);
                         }
                         self.link = None;
@@ -108,11 +111,14 @@ impl Volume {
                 let (tx, rx) = mpsc::channel();
                 self.pending = Some(rx);
                 std::thread::spawn(move || {
+                    FIRST_ERROR.with(|e| e.borrow_mut().clear());
                     let result = sync(&address, link, raw, desired, changed);
+                    let detail = FIRST_ERROR.with(|e| std::mem::take(&mut *e.borrow_mut()));
                     let _ = tx.send(Reply {
                         generation,
                         requested: desired,
                         result,
+                        detail,
                     });
                 });
             }
@@ -121,6 +127,10 @@ impl Volume {
     }
 }
 
+thread_local! {
+    /// The first D-Bus error of one attempt: what BlueZ or BlueALSA said when it refused.
+    static FIRST_ERROR: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) };
+}
 fn call(destination: &str, path: &str, args: &[&str]) -> Result<String, ()> {
     let output = std::process::Command::new("timeout")
         .args(["2", "dbus-send", "--system", "--print-reply"])
@@ -130,6 +140,14 @@ fn call(destination: &str, path: &str, args: &[&str]) -> Result<String, ()> {
         .output()
         .map_err(|_| ())?;
     if !output.status.success() {
+        let said = String::from_utf8_lossy(&output.stderr);
+        let said = said.lines().next().unwrap_or("timed out").trim().chars().take(160).collect::<String>();
+        FIRST_ERROR.with(|e| {
+            let mut e = e.borrow_mut();
+            if e.is_empty() {
+                *e = format!("{} on {path}: {said}", args.first().copied().unwrap_or(""));
+            }
+        });
         return Err(());
     }
     String::from_utf8(output.stdout).map_err(|_| ())
@@ -215,12 +233,20 @@ fn discover(bus: &Bus, address: &str) -> Result<Link, ()> {
         &["org.freedesktop.DBus.ObjectManager.GetManagedObjects"],
     )?;
     let transport = transport(&objects, address).ok_or(())?;
-    let device = transport.rsplit_once('/').ok_or(())?.0;
-    let pcm = format!(
+    let pcm = pcm_path(&transport, address).ok_or(())?;
+    Ok(Link { pcm, transport })
+}
+/// BlueALSA's PCM of the device whose BlueZ transport this is. BlueZ files a transport under
+/// the device (`dev_XX/fd0`) or, once it knows the headset's audio endpoints, under one of them
+/// (`dev_XX/sep1/fd0`): BlueALSA's PCM is always under the device.
+fn pcm_path(transport: &str, address: &str) -> Option<String> {
+    let component = format!("/dev_{}", address.replace(':', "_").to_ascii_uppercase());
+    let end = transport.find(&format!("{component}/"))? + component.len();
+    let device = &transport[..end];
+    Some(format!(
         "{}/a2dpsrc/sink",
         device.replacen("/org/bluez/", "/org/bluealsa/", 1)
-    );
-    Ok(Link { pcm, transport })
+    ))
 }
 /// Headsets keep fewer volume steps than AVRCP's 128, commonly 16: they confirm the step
 /// nearest to the volume set, up to one step away.
@@ -378,6 +404,20 @@ mod tests {
         assert!(sync_with(&bus, "AA:BB:CC:DD:EE:FF", None, None, 50, false).is_err());
     }
     #[test]
+    fn the_pcm_is_the_devices_also_when_the_transport_is_under_an_endpoint() {
+        let address = "AA:BB:CC:DD:EE:FF";
+        let pcm = "/org/bluealsa/hci0/dev_AA_BB_CC_DD_EE_FF/a2dpsrc/sink";
+        for transport_path in [
+            "/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF/fd0",
+            "/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF/sep1/fd3",
+        ] {
+            let text = format!("object path \"/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF/sep1\"\nobject path \"{transport_path}\"");
+            let found = transport(&text, address).unwrap();
+            assert_eq!(found, transport_path);
+            assert_eq!(pcm_path(&found, address).as_deref(), Some(pcm));
+        }
+    }
+    #[test]
     fn native_curve_and_roundtrip() {
         assert_eq!(native(0), 0);
         assert_eq!(native(100), 127);
@@ -424,6 +464,7 @@ mod tests {
             generation: 0,
             requested: 50,
             result: Ok(Synced { link: v.link.clone().unwrap(), raw: 51, level: 40, remote: true }),
+            detail: String::new(),
         })
         .unwrap();
         v.pending = Some(rx);
@@ -437,6 +478,7 @@ mod tests {
             generation: 0,
             requested: 50,
             result: Ok(Synced { link: v.link.clone().unwrap(), raw: 103, level: 90, remote: true }),
+            detail: String::new(),
         })
         .unwrap();
         v.pending = Some(rx);
