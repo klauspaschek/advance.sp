@@ -391,9 +391,21 @@ fn wake_checks_session_and_bedtime_before_any_update() {
     }
 }
 
+/// Now, or just after the coming midnight when that is less than a quarter of an hour away: a
+/// test that sleeps ten minutes must not cross midnight, where the daily allowance starts
+/// afresh. Run in the last ten minutes of a day, it failed. Never earlier than now: the parental
+/// controls rightly refuse a clock turned back.
+fn clear_of_midnight() -> i64 {
+    let now = now();
+    let left = 86_400 - now.rem_euclid(86_400);
+    if left < 900 { now + left + 60 } else { now }
+}
+
 #[test]
 fn daily_allowance_does_not_count_suspend_without_intervening_frames() {
     let d = card();
+    let start = clear_of_midnight();
+    let now = || start;
     let (mut app, clock) = common::app_booting_at(d.path(), now());
     app.apply(Action::Insert);
     app.set_snapshot(common::StubSnapshot::boxed());
