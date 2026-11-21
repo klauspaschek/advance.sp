@@ -3193,7 +3193,8 @@ impl App {
             if self.bluetooth.as_ref().is_some_and(|m|m.volume_selected()) && matches!(action,Action::GbaDown(Btn::Left|Btn::Right)) {
                 self.remember_volume();
                 let was_muted=std::mem::take(self.muted_mut());
-                let now=self.volume().min(self.kid_volume_limit());
+                // out of mute, the volume starts from silence, not from where it was muted
+                let now=if was_muted {0} else {self.volume().min(self.kid_volume_limit())};
                 let to=if action==Action::GbaDown(Btn::Right){now.saturating_add(VOLUME_STEP).min(self.kid_volume_limit())}else{now.saturating_sub(VOLUME_STEP)};
                 if !self.set_level(HudKind::Volume,to) && was_muted {self.persist_soon();}
                 return;
@@ -4047,6 +4048,10 @@ impl App {
             return true;
         }
         let s = &self.state;
+        // A press out of mute starts from silence: up is the smallest step, not the volume as
+        // it was muted plus a step, which came back loud after a while of quiet. Only the
+        // mute chord again brings back the volume as it was.
+        let heard = if self.muted() { 0 } else { self.level().min(self.kid_volume_limit()) };
         let (kind, value) = match action {
             Action::BrightnessUp => (HudKind::Brightness, up(s.brightness, 1, BRIGHTNESS_MAX)),
             Action::BrightnessDown => (HudKind::Brightness, s.brightness.saturating_sub(1)),
@@ -4055,17 +4060,12 @@ impl App {
             Action::VolumeUp => (
                 HudKind::Volume,
                 up(
-                    self.level().min(self.kid_volume_limit()),
+                    heard,
                     VOLUME_STEP,
                     VOLUME_MAX.min(self.kid_volume_limit()),
                 ),
             ),
-            Action::VolumeDown => (
-                HudKind::Volume,
-                self.level()
-                    .min(self.kid_volume_limit())
-                    .saturating_sub(VOLUME_STEP),
-            ),
+            Action::VolumeDown => (HudKind::Volume, heard.saturating_sub(VOLUME_STEP)),
             _ => return false,
         };
         if kind == HudKind::Volume {
@@ -4279,9 +4279,17 @@ impl App {
         }
     }
 
+    /// The headset's own buttons changed its volume. Turned up while slot is muted, it unmutes
+    /// at the headset's volume: slot set that to silence when it muted.
     pub fn observe_bluetooth_volume(&mut self, level: u8) {
-        if self.bluetooth_volume_address().is_none() || self.volume() == level {
+        if self.bluetooth_volume_address().is_none() || self.feedback_volume() == level {
             return;
+        }
+        if self.muted() {
+            if level == 0 {
+                return;
+            }
+            self.state.muted_bt = false;
         }
         self.state.volume_bt = Some(level.min(self.kid_volume_limit()));
         self.vol_before.clear();
@@ -8153,15 +8161,19 @@ mod bluetooth_tests {
     }
 
     #[test]
-    fn native_bluetooth_feedback_preserves_mute_and_other_outputs() {
+    fn headset_buttons_turning_up_unmute_and_leave_other_outputs() {
         let mut app = App::new(vec![]);
         app.state.volume = 20;
         app.state.volume_hp = 30;
         app.bluetooth_state(Some("AA:BB:CC:DD:EE:FF".into()), true);
         app.state.muted_bt = true;
+        app.observe_bluetooth_volume(0);
+        assert!(app.muted(), "the headset at silence keeps slot muted");
+        app.observe_bluetooth_volume(6);
+        assert!(!app.muted(), "turned up on the headset, slot unmutes");
+        assert_eq!(app.output_volume(), 6, "at the headset's small step, not the muted volume");
         app.observe_bluetooth_volume(65);
         assert_eq!(app.volume(), 65);
-        assert_eq!(app.output_volume(), 0);
         assert_eq!(app.state.volume, 20);
         assert_eq!(app.state.volume_hp, 30);
         app.usb_state(true, false);

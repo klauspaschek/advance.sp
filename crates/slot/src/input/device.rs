@@ -42,7 +42,6 @@ pub struct DeviceInput {
     actions: Vec<Action>,
     testing: bool,
     tested: Vec<(&'static str, bool)>,
-    stick_volume: [bool; 2],
     picture_steps: Vec<bool>,
     hall: Option<PathBuf>,
     lid_shut: Option<bool>,
@@ -87,7 +86,6 @@ impl DeviceInput {
             actions: Vec::new(),
             testing: false,
             tested: Vec::new(),
-            stick_volume: [false; 2],
             picture_steps: Vec::new(),
             hall: find_hall(Path::new(PSY)),
             lid_shut: None,
@@ -454,12 +452,11 @@ impl DeviceInput {
 
     /// The right stick held up or down is the volume key held; it is let go only if it was
     /// pressed, so a controller that drops cannot release a key nobody held.
-    fn stick_volume(&mut self, which: usize, key: Btn, on: bool, out: &mut Vec<RawEvent>) {
-        if on == self.stick_volume[which] {
-            return;
-        }
-        self.stick_volume[which] = on;
-        out.push(if on { RawEvent::Down(key) } else { RawEvent::Up(key) });
+    /// One push of the right stick is one tap of a volume key: held, the volume keys repeat,
+    /// and a stick left pushed raised the volume fast enough to hurt in headphones. The stick
+    /// steps again only once it came back to the middle.
+    fn stick_volume(key: Btn, out: &mut Vec<RawEvent>) {
+        out.extend([RawEvent::Down(key), RawEvent::Up(key)]);
     }
 
     fn pad_extras(&mut self, now: Millis, out: &mut Vec<RawEvent>) {
@@ -490,13 +487,14 @@ impl DeviceInput {
                 // the screen size steps once per push, as L1 and R1 step it in a GB game
                 PadExtra::ScreenSmaller(true) => self.picture_steps.push(false),
                 PadExtra::ScreenLarger(true) => self.picture_steps.push(true),
-                // held like the volume keys, so the volume repeats as they do
-                PadExtra::VolumeUp(on) => self.stick_volume(0, Btn::VolUp, on, out),
-                PadExtra::VolumeDown(on) => self.stick_volume(1, Btn::VolDown, on, out),
+                PadExtra::VolumeUp(true) => Self::stick_volume(Btn::VolUp, out),
+                PadExtra::VolumeDown(true) => Self::stick_volume(Btn::VolDown, out),
                 PadExtra::SaveState(false)
                 | PadExtra::LoadState(false)
                 | PadExtra::ScreenSmaller(false)
                 | PadExtra::ScreenLarger(false)
+                | PadExtra::VolumeUp(false)
+                | PadExtra::VolumeDown(false)
                 | PadExtra::LeftStick(..) => {}
             }
         }
@@ -621,13 +619,16 @@ mod stick_volume_tests {
     use super::*;
 
     #[test]
-    fn the_right_stick_holds_the_volume_keys_and_lets_go_only_what_it_held() {
+    fn the_right_stick_steps_the_volume_once_per_push() {
         let d = tempfile::tempdir().unwrap();
         let mut input = DeviceInput::open_in(&d.path().join("dev"), &d.path().join("sys"), d.path(), false);
         lock(&input.extras).push(PadExtra::VolumeUp(true));
-        assert_eq!(input.poll(0), vec![RawEvent::Down(Btn::VolUp)]);
+        assert_eq!(input.poll(0), vec![RawEvent::Down(Btn::VolUp), RawEvent::Up(Btn::VolUp)], "a tap, never a held key");
+        assert!(input.poll(2000).is_empty(), "held up, it does not repeat");
         lock(&input.extras).extend([PadExtra::VolumeUp(false), PadExtra::VolumeDown(false)]);
-        assert_eq!(input.poll(10), vec![RawEvent::Up(Btn::VolUp)], "no release of a key never pressed");
+        assert!(input.poll(2010).is_empty(), "back in the middle, nothing to let go");
+        lock(&input.extras).push(PadExtra::VolumeDown(true));
+        assert_eq!(input.poll(2100), vec![RawEvent::Down(Btn::VolDown), RawEvent::Up(Btn::VolDown)]);
         assert!(input.take_actions().is_empty(), "no shader change any more");
     }
 }
