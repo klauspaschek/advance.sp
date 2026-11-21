@@ -81,13 +81,27 @@ fn muted_is_silent_but_remembers() {
 }
 
 #[test]
-fn adjusting_the_volume_unmutes() {
+fn adjusting_the_volume_unmutes_from_silence() {
     let d = tmp_root_with_carts(&["Emerald"]);
     let mut a = app_playing_with_volume(d.path(), 70);
     a.apply_at(Action::MuteToggle, 0);
     a.apply_at(Action::VolumeUp, 1_000);
     assert!(!a.muted(), "still muted after turning it up");
-    assert_eq!(a.volume(), 75);
+    assert_eq!(a.volume(), 5, "up out of mute is the smallest step, not the muted 70 and more");
+    a.apply_at(Action::MuteToggle, 2_000);
+    a.apply_at(Action::VolumeDown, 3_000);
+    assert!(!a.muted());
+    assert_eq!(a.output_volume(), 0, "down out of mute stays silent");
+}
+
+#[test]
+fn the_mute_chord_alone_brings_back_the_volume_as_it_was() {
+    let d = tmp_root_with_carts(&["Emerald"]);
+    let mut a = app_playing_with_volume(d.path(), 70);
+    a.apply_at(Action::MuteToggle, 0);
+    a.apply_at(Action::MuteToggle, 60_000);
+    assert!(!a.muted());
+    assert_eq!(a.output_volume(), 70);
 }
 
 #[test]
@@ -122,6 +136,6 @@ fn turning_the_volume_up_saves_the_unmute_with_the_level() {
     a.apply_at(Action::VolumeUp, 1_000);
     a.flush_state();
     let saved = read_slot_state(d.path());
-    assert_eq!(saved.volume, 75);
+    assert_eq!(saved.volume, 5);
     assert!(!saved.muted, "the card still says muted after the sound came back");
 }
