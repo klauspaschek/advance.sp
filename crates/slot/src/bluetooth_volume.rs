@@ -47,6 +47,10 @@ impl Volume {
             if reply.generation == self.generation {
                 match reply.result {
                     Ok((link, level)) => {
+                        if self.link.is_none() {
+                            // once per connection: which volume control the headset offers
+                            eprintln!("slot: bluetooth volume: the headset's own volume follows slot's, now {level}%");
+                        }
                         self.link = Some(link);
                         self.observed = Some(level);
                         if requested == reply.requested {
@@ -55,6 +59,9 @@ impl Volume {
                         self.next = Some(Instant::now() + Duration::from_millis(750));
                     }
                     Err(()) => {
+                        if self.link.is_some() || self.observed.is_none() && self.next.is_none() {
+                            eprintln!("slot: bluetooth volume: the headset offers no volume control: slot lowers the sound, the headset's own volume stays as set on it");
+                        }
                         self.link = None;
                         self.observed = None;
                         self.next = Some(Instant::now() + Duration::from_secs(10));

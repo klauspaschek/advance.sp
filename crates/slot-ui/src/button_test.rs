@@ -15,6 +15,9 @@ pub struct ButtonTestView<'a> {
     /// What is held, by the names slot gives them: `A`, `Up`, `L1`, `Menu`, `Vol+`, `Share`,
     /// `L3`, `RS left`, `LS up`...
     pub held: &'a [&'a str],
+    /// What the held buttons do, for the line under the drawing: `A`, `Up`, `Save State`,
+    /// `Scaling Next`, `Sleep`...
+    pub meanings: &'a [&'a str],
 }
 
 const LIT: &str = "#46c3ad";
@@ -252,12 +255,12 @@ pub fn button_test_face(view: &ButtonTestView, ink: [u8; 3], canvas: Canvas) -> 
         }
     }
 
-    // what slot receives, by name
-    let names: Vec<&str> = view.held.iter().copied().filter(|n| !n.starts_with("LS ") && !n.starts_with("RS ")).collect();
+    // what the held buttons do, in the menus' words
+    let names = view.meanings;
     if !names.is_empty() {
         // the same height for both drawings, clear of the card's lower edge
         let line_y = card_bottom - 30.0;
-        text(&mut rgba, w, h, &names.join("  "), w as f32 / 2.0, line_y, 22.0, ink, crate::text::Role::Focus);
+        text(&mut rgba, w, h, &names.join(" · "), w as f32 / 2.0, line_y, 22.0, ink, crate::text::Role::Focus);
     }
 
     // the footer: holding B leaves, every other press is only shown

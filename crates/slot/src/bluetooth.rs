@@ -189,6 +189,12 @@ pub struct Manager {
     refreshed_at: Option<std::time::Instant>,
     test_held: Vec<&'static str>,
     test_b_since: Option<u64>,
+    /// When Share went down in the checker, and the checker's clock: its line says what a hold
+    /// of that length does.
+    test_share_since: Option<u64>,
+    /// When MENU went down in the checker: held long enough, it ejects the game.
+    test_menu_since: Option<u64>,
+    test_now: u64,
     /// The checker draws the Xbox controller: one is connected and was pressed last.
     pub test_controller: bool,
     /// The checker was opened on its own (General → Test buttons) and has been left.
@@ -251,6 +257,9 @@ impl Manager {
             refreshed_at: None,
             test_held: Vec::new(),
             test_b_since: None,
+            test_share_since: None,
+            test_menu_since: None,
+            test_now: 0,
             test_controller: false,
             closed: false,
             root,
@@ -592,14 +601,50 @@ impl Manager {
         self.page == Page::Test
     }
 
-    /// The checker's state as one row, for the face: which drawing, which layout, what is held.
+    /// The checker's state as one row, for the face: which drawing, which layout, what is held,
+    /// and what the held buttons do.
     fn test_rows(&self) -> Vec<String> {
         vec![format!(
-            "TESTVIEW {} {} {}",
+            "TESTVIEW {} {} {}|{}",
             u8::from(self.test_controller),
             u8::from(self.pad_by_position),
-            self.test_held.join(",")
+            self.test_held.join(","),
+            self.test_meanings().join(",")
         )]
+    }
+
+    /// What the held buttons do, in the menus' own words: a button is its name, a controller's
+    /// extra control is the shortcut it is (the left stick shows as the d-pad it steers).
+    pub fn test_meanings(&self) -> Vec<&'static str> {
+        let held_for = self.test_share_since.map_or(0, |at| self.test_now.saturating_sub(at));
+        let menu_for = self.test_menu_since.map_or(0, |at| self.test_now.saturating_sub(at));
+        // both volume keys together mute, as they do outside the checker
+        let mute = self.test_held.contains(&"Vol+") && self.test_held.contains(&"Vol-");
+        let mut meanings: Vec<&'static str> = self.test_held
+            .iter()
+            .filter_map(|name| match *name {
+                "Vol+" | "Vol-" if mute => None,
+                // held, MENU (the Xbox button too) ejects the game
+                "Menu" if menu_for >= slot_input::MENU_HOLD_MS => Some("Eject Game"),
+                "LS up" | "LS down" | "LS left" | "LS right" => None,
+                "RS up" => Some("Vol+"),
+                "RS down" => Some("Vol-"),
+                "RS left" => Some("Scaling Back"),
+                "RS right" => Some("Scaling Next"),
+                "L3" => Some("Save State"),
+                "R3" => Some("Load State"),
+                // tapped, a screenshot; held, the power button: let go to sleep, keep holding
+                // to power off
+                "Share" if held_for < crate::input::SHARE_POWER_MS => Some("Screenshot"),
+                "Share" if held_for < crate::input::SHARE_POWER_MS + slot_input::POWER_HOLD_MS => Some("Sleep"),
+                "Share" => Some("Power Off"),
+                other => Some(other),
+            })
+            .collect();
+        if mute {
+            meanings.push("Mute");
+        }
+        meanings
     }
 
     /// The names held in the checker now.
@@ -618,10 +663,12 @@ impl Manager {
             RawEvent::Down(button) => {
                 if let Some(name) = test_name(button) { self.hold(name); }
                 if button == Btn::B { self.test_b_since = Some(now); }
+                if button == Btn::Menu && self.test_menu_since.is_none() { self.test_menu_since = Some(now); }
             }
             RawEvent::Up(button) => {
                 if let Some(name) = test_name(button) { self.test_held.retain(|n| *n != name); }
                 if button == Btn::B { self.test_b_since = None; }
+                if button == Btn::Menu { self.test_menu_since = None; }
             }
         }
     }
@@ -629,12 +676,18 @@ impl Manager {
     /// A controller's extra button (Share, the stick clicks, the right stick) held or let go.
     pub fn test_extra(&mut self, name: &str, down: bool) {
         let name = extra_name(name);
+        let was_held = self.test_held.contains(&name);
         self.test_held.retain(|n| *n != name);
         if down { self.hold(name); }
+        if name == "Share" {
+            if !down { self.test_share_since = None; }
+            else if !was_held { self.test_share_since = Some(self.test_now); }
+        }
     }
 
     /// Leaves the checker once B has been held long enough.
     pub fn test_tick(&mut self, now: u64) {
+        self.test_now = now;
         if self.testing() && self.test_b_since.is_some_and(|at| now.saturating_sub(at) >= TEST_LEAVE_MS) {
             self.test_held.clear();
             self.test_b_since = None;
@@ -1228,8 +1281,12 @@ fn render_face(lines: &[String], footer_ink: [u8;3], canvas:slot_ui::Canvas, swi
         let mut words = state.splitn(3, ' ');
         let controller = words.next() == Some("1");
         let nintendo = words.next() == Some("1");
-        let held: Vec<&str> = words.next().unwrap_or("").split(',').filter(|n| !n.is_empty()).collect();
-        let view = slot_ui::ButtonTestView { controller, nintendo, held: &held };
+        let (held, meanings) = words.next().unwrap_or("").split_once('|').unwrap_or(("", ""));
+        let list = |text: &'_ str| text.split(',').filter(|n| !n.is_empty()).map(str::to_owned).collect::<Vec<_>>();
+        let (held, meanings) = (list(held), list(meanings));
+        let held: Vec<&str> = held.iter().map(String::as_str).collect();
+        let meanings: Vec<&str> = meanings.iter().map(String::as_str).collect();
+        let view = slot_ui::ButtonTestView { controller, nintendo, held: &held, meanings: &meanings };
         return slot_ui::button_test_face(&view, footer_ink, canvas);
     }
     let screen_w=canvas.w.round() as u32;
@@ -1536,6 +1593,9 @@ mod menu_tests {
             refreshed_at: None,
             test_held: Vec::new(),
             test_b_since: None,
+            test_share_since: None,
+            test_menu_since: None,
+            test_now: 0,
             test_controller: false,
             closed: false,
             bluetooth_available: true,
@@ -1939,7 +1999,7 @@ mod menu_tests {
         assert_eq!(m.page_key(), 4900, "no list focus bar over the drawing");
         m.test_input(RawEvent::Down(Btn::A), 0);
         m.test_extra("L↑", true);
-        assert!(m.lines().iter().any(|l| l.ends_with("TESTVIEW 0 1 A,LS up")), "{:?}", m.lines());
+        assert!(m.lines().iter().any(|l| l.ends_with("TESTVIEW 0 1 A,LS up|A")), "{:?}", m.lines());
         assert!(m.lines().last().unwrap().is_empty());
         m.test_input(RawEvent::Down(Btn::B), 100);
         m.test_tick(100 + TEST_LEAVE_MS - 1);
@@ -1949,12 +2009,57 @@ mod menu_tests {
     }
 
     #[test]
+    fn the_checker_says_what_a_controllers_extra_controls_do() {
+        let mut m = Manager::button_test(PathBuf::new());
+        m.test_tick(1000);
+        for (control, meaning) in [("R↑", "Vol+"), ("R↓", "Vol-"), ("R←", "Scaling Back"), ("R→", "Scaling Next"), ("L3", "Save State"), ("R3", "Load State")] {
+            m.test_extra(control, true);
+            assert_eq!(m.test_meanings(), [meaning], "{control}");
+            m.test_extra(control, false);
+        }
+        m.test_extra("L↑", true);
+        m.test_input(RawEvent::Down(Btn::Up), 1000);
+        assert_eq!(m.test_meanings(), ["Up"], "the left stick shows as the d-pad it steers");
+    }
+
+    #[test]
+    fn holding_share_in_the_checker_names_each_stage_of_the_power_button() {
+        let mut m = Manager::button_test(PathBuf::new());
+        m.test_tick(1000);
+        m.test_extra("Share", true);
+        assert_eq!(m.test_meanings(), ["Screenshot"]);
+        m.test_tick(1000 + crate::input::SHARE_POWER_MS);
+        assert_eq!(m.test_meanings(), ["Sleep"]);
+        m.test_tick(1000 + crate::input::SHARE_POWER_MS + slot_input::POWER_HOLD_MS);
+        assert_eq!(m.test_meanings(), ["Power Off"]);
+        m.test_extra("Share", false);
+        assert!(m.test_meanings().is_empty());
+        m.test_extra("Share", true);
+        assert_eq!(m.test_meanings(), ["Screenshot"], "a new press starts over");
+    }
+
+    #[test]
+    fn a_held_menu_ejects_and_both_volume_keys_mute() {
+        let mut m = Manager::button_test(PathBuf::new());
+        m.test_tick(1000);
+        m.test_input(RawEvent::Down(Btn::Menu), 1000);
+        assert_eq!(m.test_meanings(), ["Menu"]);
+        m.test_tick(1000 + slot_input::MENU_HOLD_MS);
+        assert_eq!(m.test_meanings(), ["Eject Game"]);
+        m.test_input(RawEvent::Up(Btn::Menu), 2500);
+        m.test_input(RawEvent::Down(Btn::VolUp), 2500);
+        assert_eq!(m.test_meanings(), ["Vol+"]);
+        m.test_input(RawEvent::Down(Btn::VolDown), 2500);
+        assert_eq!(m.test_meanings(), ["Mute"]);
+    }
+
+    #[test]
     fn the_checker_saves_layout_and_drawing_choice_in_its_view() {
         let mut m = Manager::button_test(PathBuf::new());
         m.test_controller = true;
         m.pad_by_position = false;
         m.test_input(RawEvent::Down(Btn::Start), 0);
-        assert!(m.lines().iter().any(|l| l.ends_with("TESTVIEW 1 0 Start")));
+        assert!(m.lines().iter().any(|l| l.ends_with("TESTVIEW 1 0 Start|Start")));
         let face = screen_face_on(&m.lines(), [255, 255, 255], slot_ui::Canvas::FRAMED);
         assert!(face.rgba.chunks_exact(4).any(|p| p[3] > 0), "the drawing is empty");
     }
