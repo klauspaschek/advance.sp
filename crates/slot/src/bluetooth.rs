@@ -2534,8 +2534,10 @@ fn connection_event(line: &str, address: &str, watched: &mut Watched) -> bool {
 #[derive(Default)]
 pub struct Reconnect {
     checked: Option<std::time::Instant>,
-    pending: Option<Receiver<()>>,
+    pending: Option<Receiver<String>>,
     failures: u32,
+    /// Why the last automatic reconnect failed, as logged: each reason once, not every retry.
+    said: String,
 }
 
 impl Reconnect {
@@ -2544,13 +2546,23 @@ impl Reconnect {
     }
     pub fn poll(&mut self, root: &std::path::Path, connected: bool) {
         if let Some(rx) = &self.pending {
-            if !matches!(rx.try_recv(), Err(mpsc::TryRecvError::Empty)) {
-                self.pending = None;
+            match rx.try_recv() {
+                Err(mpsc::TryRecvError::Empty) => {}
+                outcome => {
+                    self.pending = None;
+                    let status = outcome.unwrap_or_default();
+                    let why = status.strip_prefix("Error: ").unwrap_or_default();
+                    if !why.is_empty() && why != self.said {
+                        eprintln!("slot: headphone reconnect: {why}");
+                    }
+                    self.said = why.to_owned();
+                }
             }
         }
         let now = std::time::Instant::now();
         if connected {
             self.failures = 0;
+            self.said.clear();
             self.checked = Some(now);
             return;
         }
@@ -2575,8 +2587,7 @@ impl Reconnect {
         let (tx, rx) = mpsc::channel();
         self.pending = Some(rx);
         std::thread::spawn(move || {
-            let _ = run(root, "reconnect", None);
-            let _ = tx.send(());
+            let _ = tx.send(run(root, "reconnect", None).status);
         });
     }
 }

@@ -277,6 +277,28 @@ esac
         self.run_command('reconnect')
         self.assertEqual((self.root / 'Config/bluetooth-headphones').read_text().strip(), MAC)
 
+    def test_reconnect_takes_headphones_that_connected_by_themselves(self):
+        # out of their case, headphones connect themselves; BlueZ refuses a second connect
+        (self.root / 'Config').mkdir()
+        (self.root / 'Config/bluetooth-headphones').write_text(MAC)
+        for reason in ['org.bluez.Error.AlreadyConnected', 'org.bluez.Error.InProgress']:
+            (self.root / 'route').unlink(missing_ok=True)
+            self.env['MOCK_CONNECT_ERROR'] = reason
+            result = self.run_command('reconnect')
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual((self.root / 'route').read_text().strip(), f'bluealsa:DEV={MAC},PROFILE=a2dp')
+        # still connecting, and never finishing: no sound is sent to them
+        (self.root / 'route').unlink()
+        self.env.update(MOCK_CONNECTED='no')
+        self.assertNotEqual(self.run_command('reconnect').returncode, 0)
+        self.assertFalse((self.root / 'route').exists())
+
+    def test_a_refused_connect_still_fails(self):
+        self.env['MOCK_CONNECT_ERROR'] = 'org.bluez.Error.Failed br-connection-page-timeout'
+        result = self.run_command('connect', MAC)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse((self.root / 'route').exists())
+
     def test_connect_and_speaker(self):
         result = self.run_command('connect', MAC)
         self.assertEqual(result.returncode, 0, result.stderr)

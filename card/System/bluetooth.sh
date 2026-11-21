@@ -570,6 +570,14 @@ connect() {
             CONNECT_REASON=$(printf '%s\n' "$connection" | sed -n 's/.*Failed to connect: //p' | tail -n 1)
         fi
     fi
+    # Headphones taken out of their case connect by themselves: BlueZ then says they are
+    # connected already, or still connecting, instead of connecting them. That is no failure:
+    # whether the link and its audio are ready is checked below, as after any connect.
+    case $CONNECT_REASON in
+        *AlreadyConnected*|*InProgress*|*'In Progress'*)
+            log "The headphones are connecting by themselves ($CONNECT_REASON)"
+            CONNECT_REASON='' ;;
+    esac
     # An explicit Connect rejection is final after the bounded retry.
     [ -z "$CONNECT_REASON" ] || fail "Connection failed: $CONNECT_REASON"
     if automatic; then wait_property Connected 8; else wait_property Connected 6; fi
