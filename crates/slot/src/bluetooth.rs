@@ -65,6 +65,18 @@ pub fn parse_devices(text: &str) -> Vec<Headphones> {
             }
         }
     }
+    // Earbuds often also advertise a second identity (Bluetooth LE, for their app) under the
+    // same name, with no device type: only the one that plays audio is listed.
+    let shadowed = |d: &Headphones| {
+        !d.paired
+            && !d.connected
+            && d.kind.is_empty()
+            && devices.iter().any(|o| {
+                o.address != d.address && o.name.trim() == d.name.trim() && (!o.kind.is_empty() || o.paired)
+            })
+    };
+    let hidden: Vec<String> = devices.iter().filter(|d| shadowed(d)).map(|d| d.address.clone()).collect();
+    devices.retain(|d| !hidden.contains(&d.address));
     devices
 }
 
@@ -1655,6 +1667,20 @@ mod menu_tests {
         m.input(Action::GbaDown(Btn::Right));
         assert_eq!(m.page, Page::Home);
         assert!(!m.busy(), "Right must not switch an output");
+    }
+
+    #[test]
+    fn earbuds_second_identity_is_not_listed_twice() {
+        let text = "DEVICE 08:12:87:FF:8A:DE OPPO Enco Air4\nSTATE 08:12:87:FF:8A:DE yes no\nKIND 08:12:87:FF:8A:DE audio-headphones\n\
+            DEVICE 5A:11:22:33:44:55 OPPO Enco Air4\nSTATE 5A:11:22:33:44:55 no no\n\
+            DEVICE 11:22:33:44:55:66 Speaker\nSTATE 11:22:33:44:55:66 no no\n";
+        let devices = parse_devices(text);
+        let addresses: Vec<_> = devices.iter().map(|d| d.address.as_str()).collect();
+        assert_eq!(addresses, ["08:12:87:FF:8A:DE", "11:22:33:44:55:66"], "an untyped device with its own name stays");
+        // while the second identity is the only one, or paired, it is listed
+        assert_eq!(parse_devices("DEVICE 5A:11:22:33:44:55 OPPO Enco Air4\n").len(), 1);
+        let paired = text.replace("STATE 5A:11:22:33:44:55 no no", "STATE 5A:11:22:33:44:55 yes no");
+        assert_eq!(parse_devices(&paired).len(), 3);
     }
 
     #[test]

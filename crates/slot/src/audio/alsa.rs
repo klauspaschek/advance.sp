@@ -249,6 +249,9 @@ struct Playback {
     pcm: Option<*mut c_void>,
     rate: u32,
     failing: bool,
+    /// While the output cannot be opened (headphones gone), when to try again: not on every
+    /// period, which filled the log with thousands of failed opens.
+    retry_at: Option<Instant>,
     route: Option<String>,
     actual: String,
 }
@@ -262,6 +265,7 @@ fn play(ring: &Arc<Ring>, sample_rate: u32) -> Result<Playback, AudioError> {
         pcm: None,
         rate: sample_rate,
         failing: false,
+        retry_at: None,
         route: requested_device(),
         actual: String::new(),
     })
@@ -283,6 +287,10 @@ impl Playback {
                 let route = requested_device();
                 if route != self.route || route.as_ref().is_some_and(|r| *r != self.actual) {
                     self.release();
+                    if route != self.route {
+                        // a new output is tried at once
+                        self.retry_at = None;
+                    }
                     self.route = route;
                 }
                 route_check = Instant::now();
@@ -294,18 +302,20 @@ impl Playback {
                     self.release();
                     eprintln!("slot: audio released after silence");
                 }
-                (None, true) => match self.alsa.open_pcm(self.rate) {
+                (None, true) if self.retry_at.is_none_or(|at| Instant::now() >= at) => match self.alsa.open_pcm(self.rate) {
                     Ok((pcm, name)) => {
                         self.actual = name;
                         eprintln!("slot: audio reopened at {:.1} ms", crate::boot_time::ms());
                         self.pcm = Some(pcm);
                         self.failing = false;
+                        self.retry_at = None;
                     }
                     Err(e) => {
                         if !self.failing {
                             eprintln!("slot: audio: {e}, retrying");
                             self.failing = true;
                         }
+                        self.retry_at = Some(Instant::now() + Duration::from_millis(500));
                     }
                 },
                 _ => {}
