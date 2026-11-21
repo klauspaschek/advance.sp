@@ -8,10 +8,21 @@ struct Link {
     pcm: String,
     transport: String,
 }
+/// One look at the headset's volume.
+#[derive(Debug)]
+struct Synced {
+    link: Link,
+    /// The headset's own volume (0 to 127) as it reported it last.
+    raw: u8,
+    /// slot's volume in effect at the headset.
+    level: u8,
+    /// The headset changed its volume itself, with its own buttons.
+    remote: bool,
+}
 struct Reply {
     generation: u64,
     requested: u8,
-    result: Result<(Link, u8), &'static str>,
+    result: Result<Synced, &'static str>,
 }
 #[derive(Default)]
 pub struct Volume {
@@ -19,6 +30,8 @@ pub struct Volume {
     generation: u64,
     link: Option<Link>,
     observed: Option<u8>,
+    /// The headset's own volume as last read, to tell its own buttons from slot's writes.
+    raw: Option<u8>,
     pending: Option<Receiver<Reply>>,
     next: Option<Instant>,
     /// Why the headset's volume could not be linked, as last logged: a reason is logged
@@ -42,6 +55,7 @@ impl Volume {
             self.generation = self.generation.wrapping_add(1);
             self.link = None;
             self.observed = None;
+            self.raw = None;
             self.reason = None;
             // a fresh connection needs a moment before its volume can be read
             self.next = Some(Instant::now() + Duration::from_secs(2));
@@ -51,27 +65,32 @@ impl Volume {
             self.pending = None;
             if reply.generation == self.generation {
                 match reply.result {
-                    Ok((link, level)) => {
+                    Ok(synced) => {
                         if self.link.is_none() {
                             // once per connection: which volume control the headset offers
-                            eprintln!("slot: bluetooth volume: the headset's own volume follows slot's, now {level}%");
+                            eprintln!(
+                                "slot: bluetooth volume: the headset's own volume follows slot's, now {}%",
+                                synced.level
+                            );
                         }
                         self.reason = None;
-                        self.link = Some(link);
-                        self.observed = Some(level);
-                        if requested == reply.requested {
-                            feedback = Some(level);
+                        self.link = Some(synced.link);
+                        self.raw = Some(synced.raw);
+                        self.observed = Some(synced.level);
+                        if synced.remote && requested == reply.requested {
+                            feedback = Some(synced.level);
                         }
                         self.next = Some(Instant::now() + Duration::from_millis(750));
                     }
                     Err(why) => {
                         if self.reason != Some(why) {
-                            eprintln!("slot: bluetooth volume: not linked ({why}): slot lowers the sound itself, the headset's own volume stays as set on it; retrying every 10 s");
+                            eprintln!("slot: bluetooth volume: not linked ({why}): slot lowers the sound itself, the headset's own volume stays as set on it; retrying every 5 s");
                             self.reason = Some(why);
                         }
                         self.link = None;
                         self.observed = None;
-                        self.next = Some(Instant::now() + Duration::from_secs(10));
+                        self.raw = None;
+                        self.next = Some(Instant::now() + Duration::from_secs(5));
                     }
                 }
             }
@@ -84,11 +103,12 @@ impl Volume {
         {
             if let Some(address) = self.address.clone() {
                 let link = self.link.clone();
+                let raw = self.raw;
                 let generation = self.generation;
                 let (tx, rx) = mpsc::channel();
                 self.pending = Some(rx);
                 std::thread::spawn(move || {
-                    let result = sync(&address, link, desired, changed);
+                    let result = sync(&address, link, raw, desired, changed);
                     let _ = tx.send(Reply {
                         generation,
                         requested: desired,
@@ -202,27 +222,47 @@ fn discover(bus: &Bus, address: &str) -> Result<Link, ()> {
     );
     Ok(Link { pcm, transport })
 }
+/// Headsets keep fewer volume steps than AVRCP's 128, commonly 16: they confirm the step
+/// nearest to the volume set, up to one step away.
+const HEADSET_STEP: u8 = 8;
 fn write(bus: &Bus, link: &Link, value: u8) -> Result<u8, ()> {
     let packed = u16::from(value) * 257;
     set(bus, link, "Volume", &format!("variant:uint16:{packed}"))?;
     // BlueALSA can swallow a failed native write. Require BlueZ readback before
-    // removing software attenuation. One native step of rounding is harmless.
-    let actual = remote(bus, link)?;
-    if actual.abs_diff(value) > 1 {
-        return Err(());
+    // removing software attenuation. The headset confirms a moment later, in its own steps.
+    let mut actual = remote(bus, link)?;
+    for _ in 0..5 {
+        if actual.abs_diff(value) <= HEADSET_STEP {
+            return Ok(actual);
+        }
+        if !cfg!(test) {
+            std::thread::sleep(Duration::from_millis(200));
+        }
+        actual = remote(bus, link)?;
     }
-    Ok(actual)
+    if actual.abs_diff(value) <= HEADSET_STEP { Ok(actual) } else { Err(()) }
 }
-fn sync(address: &str, existing: Option<Link>, level: u8, changed: bool) -> Result<(Link, u8), &'static str> {
-    sync_with(&call, address, existing, level, changed)
+fn sync(
+    address: &str,
+    existing: Option<Link>,
+    raw: Option<u8>,
+    level: u8,
+    changed: bool,
+) -> Result<Synced, &'static str> {
+    sync_with(&call, address, existing, raw, level, changed)
 }
+/// Links the headset's own volume to slot's. slot's volume wins when the headset connects, and
+/// whenever slot's buttons change it; the headset's own buttons change slot's. Nothing here
+/// ever scales the headset's volume by slot's: a link that fails and is retried must leave the
+/// headset's volume as it was, not lower it on every retry.
 fn sync_with(
     bus: &Bus,
     address: &str,
     existing: Option<Link>,
+    known: Option<u8>,
     level: u8,
     changed: bool,
-) -> Result<(Link, u8), &'static str> {
+) -> Result<Synced, &'static str> {
     let first = existing.is_none();
     let link = match existing {
         Some(link) => link,
@@ -230,30 +270,21 @@ fn sync_with(
     };
     let result = (|| {
         // Optional property: absence means no native support (or none negotiated yet).
-        let current = remote(bus, &link).map_err(|_| "the headset reports no volume of its own (AVRCP absolute volume)")?;
-        let value = if first {
-            let soft = get(
-                bus,
-                "org.bluealsa",
-                &link.pcm,
-                "org.bluealsa.PCM1",
-                "SoftVolume",
-            ).map_err(|_| "BlueALSA has no volume for this headset")?;
-            let target = if soft.split_whitespace().last() == Some("true") {
-                // Migration: preserve both existing attenuation stages instead of
-                // suddenly removing Slot's software gain or maxing the headset.
-                ((u32::from(current) * u32::from(level).pow(2)) / 10000) as u8
-            } else {
-                current.min(native(level))
-            };
-            set(bus, &link, "SoftVolume", "variant:boolean:false").map_err(|_| "BlueALSA refused to hand the volume to the headset")?;
-            write(bus, &link, target).map_err(|_| "the headset did not take the volume set")?
-        } else if changed {
-            write(bus, &link, native(level)).map_err(|_| "the headset did not take the volume set")?
-        } else {
-            current
-        };
-        Ok((link.clone(), percent(value)))
+        let current = remote(bus, &link)
+            .map_err(|_| "the headset reports no volume of its own (AVRCP absolute volume)")?;
+        if first {
+            set(bus, &link, "SoftVolume", "variant:boolean:false")
+                .map_err(|_| "BlueALSA refused to hand the volume to the headset")?;
+        }
+        if first || changed {
+            let raw = write(bus, &link, native(level))
+                .map_err(|_| "the headset did not take the volume set")?;
+            return Ok(Synced { link: link.clone(), raw, level, remote: false });
+        }
+        if known.is_some_and(|known| known != current) {
+            return Ok(Synced { link: link.clone(), raw: current, level: percent(current), remote: true });
+        }
+        Ok(Synced { link: link.clone(), raw: current, level, remote: false })
     })();
     if result.is_err() {
         // Fall back to Slot's original software gain. Never raise remote volume.
@@ -285,59 +316,56 @@ mod tests {
     }
     const OBJECTS: &str = "object path \"/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF/fd0\"";
     #[test]
-    fn migration_preserves_existing_attenuation() {
+    fn connecting_sets_the_headset_to_slots_volume_in_its_own_steps() {
         let bus = scripted(vec![
             ("GetManagedObjects", Ok(OBJECTS)),
             ("string:Volume", Ok("variant uint16 64")),
-            ("string:SoftVolume", Ok("variant boolean true")),
             ("variant:boolean:false", Ok("")),
-            ("variant:uint16:4112", Ok("")), // remote 64 * Slot 50%^2 = 16
-            ("string:Volume", Ok("variant uint16 16")),
+            ("variant:uint16:8224", Ok("")), // slot's 50% = 32
+            ("string:Volume", Ok("variant uint16 64")), // not confirmed yet
+            ("string:Volume", Ok("variant uint16 34")), // the headset's nearest step
         ]);
-        assert_eq!(
-            sync_with(&bus, "AA:BB:CC:DD:EE:FF", None, 50, false)
-                .unwrap()
-                .1,
-            percent(16)
-        );
+        let synced = sync_with(&bus, "AA:BB:CC:DD:EE:FF", None, None, 50, false).unwrap();
+        assert_eq!((synced.raw, synced.level, synced.remote), (34, 50, false));
     }
     #[test]
-    fn reconnect_does_not_apply_software_attenuation_again() {
-        let bus = scripted(vec![
-            ("GetManagedObjects", Ok(OBJECTS)),
-            ("string:Volume", Ok("variant uint16 64")),
-            ("string:SoftVolume", Ok("variant boolean false")),
-            ("variant:boolean:false", Ok("")),
-            ("variant:uint16:16448", Ok("")),
-            ("string:Volume", Ok("variant uint16 64")),
-        ]);
-        assert_eq!(
-            sync_with(&bus, "AA:BB:CC:DD:EE:FF", None, 80, false)
-                .unwrap()
-                .1,
-            percent(64)
-        );
+    fn a_retried_link_never_lowers_the_headset_again() {
+        // Each failed attempt falls back to software volume. The next attempt used to read
+        // that as a migration and scale the headset's volume by slot's, every 10 s, until
+        // the headset was all but silent.
+        for _ in 0..3 {
+            let mut steps = vec![
+                ("GetManagedObjects", Ok(OBJECTS)),
+                ("string:Volume", Ok("variant uint16 100")),
+                ("variant:boolean:false", Ok("")),
+                ("variant:uint16:8224", Ok("")), // always slot's 50%, never less
+            ];
+            steps.extend(std::iter::repeat_n(("string:Volume", Ok("variant uint16 100")), 6));
+            steps.push(("variant:boolean:true", Ok("")));
+            steps.push(("variant:uint16:32639", Ok("")));
+            assert!(sync_with(&scripted(steps), "AA:BB:CC:DD:EE:FF", None, None, 50, false).is_err());
+        }
     }
     #[test]
     fn native_write_must_be_confirmed_before_bypassing_software() {
-        let bus = scripted(vec![
+        let mut steps = vec![
             ("string:Volume", Ok("variant uint16 64")),
             ("variant:uint16:8224", Ok("")), // desired 50% = 32
-            ("string:Volume", Ok("variant uint16 64")), // device ignored write
-            ("variant:boolean:true", Ok("")),
-            ("variant:uint16:32639", Ok("")), // software unity, no remote change
-        ]);
-        assert!(sync_with(&bus, "unused", linked().link, 50, true).is_err());
+        ];
+        steps.extend(std::iter::repeat_n(("string:Volume", Ok("variant uint16 64")), 6)); // ignored
+        steps.push(("variant:boolean:true", Ok("")));
+        steps.push(("variant:uint16:32639", Ok(""))); // software unity, no remote change
+        assert!(sync_with(&scripted(steps), "unused", linked().link, Some(64), 50, true).is_err());
     }
     #[test]
     fn headphone_buttons_are_read_without_writing_back() {
         let bus = scripted(vec![("string:Volume", Ok("variant uint16 90"))]);
-        assert_eq!(
-            sync_with(&bus, "unused", linked().link, 50, false)
-                .unwrap()
-                .1,
-            percent(90)
-        );
+        let synced = sync_with(&bus, "unused", linked().link, Some(32), 50, false).unwrap();
+        assert_eq!((synced.level, synced.remote), (percent(90), true));
+        // slot's own write, confirmed in the headset's step, is not mistaken for its buttons
+        let bus = scripted(vec![("string:Volume", Ok("variant uint16 34"))]);
+        let synced = sync_with(&bus, "unused", linked().link, Some(34), 50, false).unwrap();
+        assert_eq!((synced.level, synced.remote), (50, false));
     }
     #[test]
     fn unsupported_transport_retains_software_control() {
@@ -347,7 +375,7 @@ mod tests {
             ("variant:boolean:true", Ok("")),
             ("variant:uint16:32639", Ok("")),
         ]);
-        assert!(sync_with(&bus, "AA:BB:CC:DD:EE:FF", None, 50, false).is_err());
+        assert!(sync_with(&bus, "AA:BB:CC:DD:EE:FF", None, None, 50, false).is_err());
     }
     #[test]
     fn native_curve_and_roundtrip() {
@@ -395,7 +423,7 @@ mod tests {
         tx.send(Reply {
             generation: 0,
             requested: 50,
-            result: Ok((v.link.clone().unwrap(), 40)),
+            result: Ok(Synced { link: v.link.clone().unwrap(), raw: 51, level: 40, remote: true }),
         })
         .unwrap();
         v.pending = Some(rx);
@@ -408,7 +436,7 @@ mod tests {
         tx.send(Reply {
             generation: 0,
             requested: 50,
-            result: Ok((v.link.clone().unwrap(), 90)),
+            result: Ok(Synced { link: v.link.clone().unwrap(), raw: 103, level: 90, remote: true }),
         })
         .unwrap();
         v.pending = Some(rx);

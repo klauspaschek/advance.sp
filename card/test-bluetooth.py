@@ -52,7 +52,7 @@ case "$*" in
        default-agent) echo 'Default agent request successful';;
        'scan on') echo 'Discovery started';;
        pair*) tries=$(cat "$SLOT_ROOT/pair-tries" 2>/dev/null || echo 0); tries=$((tries + 1)); echo "$tries" > "$SLOT_ROOT/pair-tries"
-         if [ "$tries" -le "${MOCK_PAIR_CANCELS:-0}" ]; then echo 'Failed to pair: org.bluez.Error.AuthenticationCanceled'; continue; fi
+         if [ "$tries" -le "${MOCK_PAIR_CANCELS:-0}" ]; then echo "Failed to pair: org.bluez.Error.${MOCK_PAIR_REASON:-AuthenticationCanceled}"; continue; fi
          if [ "${MOCK_AUTH_PROMPT:-no}" = yes ]; then echo "[agent] ${MOCK_AUTH_TEXT:-Authorize pairing} (yes/no):"; elif [ "${MOCK_PAIR_FAIL:-no}" = yes ]; then echo 'Failed to pair: org.bluez.Error.AuthenticationFailed'; else touch "$SLOT_ROOT/paired"; echo 'Pairing successful'; fi;;
        connect*)
          if [ "${MOCK_REQUIRE_TRUST:-no}" = yes ] && [ ! -f "$SLOT_ROOT/trusted" ]; then echo 'Failed to connect: org.bluez.Error.Rejected';
@@ -90,6 +90,8 @@ case "$*" in
    if [ "${MOCK_REQUIRE_READY:-no}" = yes ] && [ ! -f "$SLOT_ROOT/source-ready" ]; then echo 'Failed to connect: org.bluez.Error.Failed br-connection-profile-unavailable'; exit 1; fi
    if [ "${MOCK_CONNECT_ERROR:-}" != '' ]; then echo "Failed to connect: $MOCK_CONNECT_ERROR"; exit 1; fi
    if [ "${MOCK_PROFILE_ONCE:-no}" = yes ] && [ ! -f "$SLOT_ROOT/connect-retried" ]; then touch "$SLOT_ROOT/connect-retried"; echo "Failed to connect: org.bluez.Error.Failed ${MOCK_RETRY_REASON:-br-connection-profile-unavailable}"; exit 1; fi;;
+ 'devices Connected') [ -z "${MOCK_OTHER:-}" ] || echo "Device $MOCK_OTHER Other headphones";;
+ "info ${MOCK_OTHER:-none}") echo 'Paired: yes'; echo 'Connected: yes'; echo 'UUID: Audio Sink (0000110b-0000-1000-8000-00805f9b34fb)';;
  *devices*) echo 'Device AA:BB:CC:DD:EE:FF My headphones'; echo 'Device 00:11:22:33:44:55 00-11-22-33-44-55';;
  *info*)
    [ "${MOCK_ALIAS:-}" = "" ] || echo "Alias: $MOCK_ALIAS"
@@ -234,6 +236,46 @@ esac
         self.env['MOCK_CONNECTED'] = 'no'
         self.assertEqual(self.run_command('fallback', '00:11:22:33:44:55').returncode, 0)
         self.assertEqual((self.root / 'route').read_text(), route)
+
+    def test_headphones_that_reject_pairing_are_disconnected_and_tried_again(self):
+        # Headphones holding an old pairing reconnect on their own, unpaired, and reject the new one.
+        self.env.update(MOCK_PAIRED='no', MOCK_PAIR_CANCELS='1', MOCK_PAIR_REASON='AuthenticationRejected')
+        result = self.run_command('connect', MAC)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = (self.root / 'calls').read_text().splitlines()
+        self.assertEqual(calls.count(f'disconnect {MAC}'), 2, 'dropped before pairing and before the retry')
+        self.assertEqual(calls.count(f'session pair {MAC}'), 2)
+        self.assertEqual((self.root / 'route').read_text().strip(), f'bluealsa:DEV={MAC},PROFILE=a2dp')
+
+    def test_headphones_that_keep_rejecting_pairing_ask_for_pairing_mode(self):
+        self.env.update(MOCK_PAIRED='no', MOCK_PAIR_CANCELS='9', MOCK_PAIR_REASON='AuthenticationRejected')
+        result = self.run_command('connect', MAC)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('put the device in pairing mode', result.stderr)
+        self.assertEqual((self.root / 'calls').read_text().splitlines().count(f'session pair {MAC}'), 3)
+
+    def test_reconnect_follows_other_paired_headphones_that_connected(self):
+        other = '11:22:33:44:55:66'
+        (self.root / 'Config').mkdir()
+        (self.root / 'Config/bluetooth-headphones').write_text(MAC)
+        self.env.update(MOCK_CONNECTED='no', MOCK_OTHER=other, MOCK_PCM_DEVICE=other.replace(':', '_'))
+        result = self.run_command('reconnect')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.root / 'route').read_text().strip(), f'bluealsa:DEV={other},PROFILE=a2dp')
+        self.assertEqual((self.root / 'Config/bluetooth-headphones').read_text().strip(), other)
+
+    def test_connected_saved_headphones_keep_the_sound_on_reconnect(self):
+        (self.root / 'Config').mkdir()
+        (self.root / 'Config/bluetooth-headphones').write_text(MAC)
+        self.env.update(MOCK_OTHER='11:22:33:44:55:66')
+        result = self.run_command('reconnect')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.root / 'route').read_text().strip(), f'bluealsa:DEV={MAC},PROFILE=a2dp')
+        # a controller is never taken for headphones
+        (self.root / 'Config/bluetooth-pads').write_text('11:22:33:44:55:66\n')
+        self.env['MOCK_CONNECTED'] = 'no'
+        self.run_command('reconnect')
+        self.assertEqual((self.root / 'Config/bluetooth-headphones').read_text().strip(), MAC)
 
     def test_connect_and_speaker(self):
         result = self.run_command('connect', MAC)

@@ -231,6 +231,7 @@ pub fn error_notice(status:&str)->&'static str {
     else if error.contains("save") {"Couldn’t save settings. Check the SD card."}
     else if error.contains("br-connection-busy") || error.contains("another bluetooth operation") || error.contains("inprogress") {"Bluetooth is busy. Wait a moment, then retry."}
     else if error.contains("page-timeout") || error.contains("waiting for connected") {"Device didn’t answer. Wake it and try again."}
+    else if error.contains("pairing refused") {"Pairing refused. Put the device in pairing mode."}
     else if error.contains("authentication") || error.contains("pairing failed") {"Pairing failed. Forget the device and pair again."}
     else if error.contains("profile-unavailable") || error.contains("not supported") {"Bluetooth audio unavailable. Try pairing again."}
     else if error.contains("notready") || error.contains("no default controller") || error.contains("initialization") || error.contains("couldn’t start") {"Bluetooth isn’t ready. Turn it off and on."}
@@ -1662,6 +1663,7 @@ mod menu_tests {
             ("Error: Connection failed: org.bluez.Error.Failed br-connection-busy","Bluetooth is busy. Wait a moment, then retry."),
             ("Error: Connection failed: org.bluez.Error.Failed br-connection-page-timeout","Device didn’t answer. Wake it and try again."),
             ("Error: Pairing failed: AuthenticationFailed","Pairing failed. Forget the device and pair again."),
+            ("Error: Pairing refused: put the device in pairing mode and try again","Pairing refused. Put the device in pairing mode."),
             ("Error: unknown raw details /mnt/sdcard/private.txt","Bluetooth failed. Turn it off and on, then retry."),
         ] {
             assert_eq!(error_notice(raw),want);assert!(want.chars().count()<=60);
@@ -2429,10 +2431,10 @@ impl Events {
         let address = self.selection.clone();
         let (tx, rx) = mpsc::sync_channel(1);
         std::thread::spawn(move || {
-            let mut selected = false;
+            let mut watched = Watched::Nothing;
             for line in BufReader::new(stdout).lines() {
                 let Ok(line) = line else { break };
-                if connection_event(&line, &address, &mut selected) {
+                if connection_event(&line, &address, &mut watched) {
                     // Coalesce events; the authoritative property read follows.
                     let _ = tx.try_send(());
                 }
@@ -2459,19 +2461,50 @@ impl Drop for Events {
     }
 }
 
-fn connection_event(line: &str, address: &str, selected: &mut bool) -> bool {
+/// Which device's signal the listener is reading.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+enum Watched {
+    #[default]
+    Nothing,
+    /// The saved headphones: any change of their connection counts.
+    Saved,
+    /// Another device: only its connecting counts, since paired headphones taken out of their
+    /// case take over the sound (the helper checks they are headphones).
+    Other,
+    /// Another device's "Connected" property, whose value is on the next line.
+    OtherConnected,
+}
+
+fn connection_event(line: &str, address: &str, watched: &mut Watched) -> bool {
     if line.starts_with("signal ") {
-        let component = format!("/dev_{};", address.replace(':', "_"));
-        *selected = line
-            .to_ascii_uppercase()
-            .contains(&component.to_ascii_uppercase());
-        false
-    } else {
-        *selected && line.trim() == "string \"Connected\""
+        let line = line.to_ascii_uppercase();
+        let component = format!("/DEV_{};", address.replace(':', "_").to_ascii_uppercase());
+        *watched = if line.contains(&component) {
+            Watched::Saved
+        } else if line.contains("/DEV_") {
+            Watched::Other
+        } else {
+            Watched::Nothing
+        };
+        return false;
+    }
+    let connected = line.trim() == "string \"Connected\"";
+    match *watched {
+        Watched::Saved => connected,
+        Watched::Other if connected => {
+            *watched = Watched::OtherConnected;
+            false
+        }
+        Watched::OtherConnected => {
+            *watched = Watched::Other;
+            line.contains("boolean true")
+        }
+        _ => false,
     }
 }
 
-/// Retry only the saved choice. No discovery, new pairing, or UI-thread commands.
+/// Retry the saved choice, or follow other paired headphones that connected by themselves (the
+/// helper decides). No discovery, new pairing, or UI-thread commands.
 #[derive(Default)]
 pub struct Reconnect {
     checked: Option<std::time::Instant>,
@@ -2655,7 +2688,7 @@ mod indicator_tests {
     #[test]
     fn events_ignore_other_devices_and_unrelated_properties() {
         let address = "AA:BB:CC:DD:EE:FF";
-        let mut selected = false;
+        let mut selected = Watched::Nothing;
         assert!(!connection_event(
             "signal path=/org/bluez/hci1/dev_AA_BB_CC_DD_EE_FF; interface=x",
             address,
@@ -2681,6 +2714,13 @@ mod indicator_tests {
             address,
             &mut selected
         ));
+        // another device disconnecting is ignored, its connecting is not: other paired
+        // headphones taken out of their case take over the sound
+        assert!(!connection_event("      variant             boolean false", address, &mut selected));
+        assert!(!connection_event("   string \"Connected\"", address, &mut selected));
+        assert!(connection_event("      variant             boolean true", address, &mut selected));
+        assert!(!connection_event("signal path=/org/bluez/hci0; interface=x", address, &mut selected));
+        assert!(!connection_event("   string \"Connected\"", address, &mut selected));
     }
 
     #[test]
