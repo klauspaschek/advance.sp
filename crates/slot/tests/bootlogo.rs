@@ -124,15 +124,19 @@ fn a_bad_wordmark_or_no_logo_to_measure_never_touches_the_partition() {
 }
 
 #[test]
-fn the_shipped_wordmark_fits_every_panel_baseos_supports() {
+fn the_shipped_logo_fills_the_rg_sp_screen_as_drawn() {
     let card = std::fs::read(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../card/System/bootlogo.bmp"
     ))
     .unwrap();
     let m = decode(&card).unwrap();
-    for panel in [(720, 480), (640, 480), (720, 720), (480, 640)] {
-        assert!(compose(&m, panel).is_some(), "{panel:?}");
+    assert_eq!((m.width, m.height), (720, 480), "drawn for the RG SP's whole screen");
+    let shown = compose(&m, (720, 480)).unwrap();
+    assert!(shown.rgb == m.rgb, "shown exactly as drawn, not moved or cut");
+    // advance.sp is made for the RG SP: a screen the logo does not fit keeps BaseOS's own
+    for panel in [(640, 480), (480, 640)] {
+        assert!(compose(&m, panel).is_none(), "{panel:?}");
     }
 }
 
