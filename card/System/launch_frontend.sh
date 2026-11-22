@@ -64,7 +64,7 @@ if [ -f "$SYS/hdmi.sh" ]; then
 		log "$(sh "$SYS/hdmi.sh" status)"
 	fi
 	if sh "$SYS/hdmi.sh" active; then
-		# slot draws the panel's own size; the TV's mode must not be taken for it
+		# the 16:9 framebuffer hdmi.sh made; the TV's mode must not be taken for it
 		vs="$(cat /sys/class/graphics/fb0/virtual_size 2>/dev/null)"
 		[ -n "$vs" ] && export SLOT_FB_SIZE="${vs%,*}x$((${vs#*,} / 2))"
 	fi

@@ -228,6 +228,31 @@ esac
         self.assertEqual((self.root / 'route').read_text().strip(), '')
         self.assertEqual((self.root / 'Config/bluetooth-headphones').read_text().strip(), MAC)
 
+    def test_on_a_tv_disconnected_headphones_give_the_sound_to_the_tv(self):
+        disp = self.root / 'disp'
+        disp.write_text('hdmi output mode(10)\n')
+        self.env['SLOT_HDMI_DISP'] = str(disp)
+        self.assertEqual(self.run_command('connect', MAC).returncode, 0)
+        self.env['MOCK_CONNECTED'] = 'no'
+        self.assertEqual(self.run_command('fallback', MAC).returncode, 0)
+        self.assertEqual((self.root / 'route').read_text().strip(), 'plughw:CARD=ahubhdmi,DEV=0')
+        # Bluetooth switched off on the TV leaves the sound on the TV too
+        self.env.pop('MOCK_CONNECTED')
+        self.assertEqual(self.run_command('connect', MAC).returncode, 0)
+        result = self.run_command('off')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.root / 'route').read_text().strip(), 'plughw:CARD=ahubhdmi,DEV=0')
+        self.assertIn('OUTPUT plughw:CARD=ahubhdmi,DEV=0', result.stdout)
+        # on the handheld's own screen they fall back to its speaker, as before
+        disp.write_text('lcd output\n')
+        result = self.run_command('on')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        result = self.run_command('connect', MAC)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.env['MOCK_CONNECTED'] = 'no'
+        self.assertEqual(self.run_command('fallback', MAC).returncode, 0)
+        self.assertEqual((self.root / 'route').read_text().strip(), '')
+
     def test_stale_disconnect_cannot_replace_a_new_output_or_reconnected_device(self):
         self.assertEqual(self.run_command('connect', MAC).returncode, 0)
         route = (self.root / 'route').read_text()

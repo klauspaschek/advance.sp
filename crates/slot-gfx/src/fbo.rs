@@ -16,6 +16,34 @@ struct Turn {
     size: (u32, u32),
 }
 
+/// Where the window's picture goes on a framebuffer larger than the window: on a TV through
+/// HDMI, the framebuffer is 16:9 and the handheld's 3:2 screen sits in the middle of it, or fills
+/// it for a game set to Stretch. `rect` is in GL's framebuffer coordinates (y up).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Letterbox {
+    pub surface: (u32, u32),
+    pub rect: (i32, i32, i32, i32),
+}
+
+/// The handheld's `window` on a `surface` of another shape: as large as it fits at its own
+/// shape, centred, or the whole surface when `fill`.
+pub fn letterbox(surface: (u32, u32), window: (u32, u32), fill: bool) -> Letterbox {
+    let (sw, sh) = (surface.0.max(1), surface.1.max(1));
+    if fill {
+        return Letterbox {
+            surface,
+            rect: (0, 0, sw as i32, sh as i32),
+        };
+    }
+    let (ww, wh) = (window.0.max(1) as f32, window.1.max(1) as f32);
+    let scale = (sw as f32 / ww).min(sh as f32 / wh);
+    let (w, h) = ((ww * scale).round() as i32, (wh * scale).round() as i32);
+    Letterbox {
+        surface,
+        rect: ((sw as i32 - w) / 2, (sh as i32 - h) / 2, w, h),
+    }
+}
+
 pub struct Compositor {
     fbo: gl::types::GLuint,
     tex: gl::types::GLuint,
@@ -34,6 +62,7 @@ pub struct Compositor {
     sp_frame: bool,
     game_destination: Option<[f32;4]>,
     turn: Option<Turn>,
+    letterbox: Option<Letterbox>,
     captured: Option<(u32, u32, Vec<u8>)>,
 }
 
@@ -85,6 +114,7 @@ impl Compositor {
                 sp_frame: true,
                 game_destination: None,
                 turn: None,
+                letterbox: None,
                 captured: None,
             })
         }
@@ -109,6 +139,25 @@ impl Compositor {
             size: (0, 0),
         });
         Ok(())
+    }
+
+    /// Places the window on a larger framebuffer (see [`Letterbox`]); `None` draws it at the
+    /// framebuffer's own size, as on the handheld's screen.
+    pub fn set_letterbox(&mut self, letterbox: Option<Letterbox>) {
+        self.letterbox = letterbox;
+    }
+
+    /// A rectangle of the window, in GL coordinates, where it lands on the framebuffer `target`.
+    fn placed(
+        &self,
+        window: (u32, u32),
+        target: gl::types::GLuint,
+        r: (i32, i32, i32, i32),
+    ) -> (i32, i32, i32, i32) {
+        match self.letterbox {
+            Some(lb) if target == 0 => place(lb, window, r),
+            _ => r,
+        }
     }
 
     pub fn upload_game(&mut self, xrgb8888: &[u8]) {
@@ -429,16 +478,11 @@ impl Compositor {
         if self.native() {
             let canvas = Canvas::of(window);
             let dx = (self.shake * window.0 as f32 / canvas.w).round() as i32;
-            self.blit_part(
-                dx,
-                0,
-                window.0 as i32,
-                window.1 as i32,
-                [0.0, 0.0, 1.0, 1.0],
-            );
+            let (x, y, w, h) = self.placed(window, target, (dx, 0, window.0 as i32, window.1 as i32));
+            self.blit_part(x, y, w, h, [0.0, 0.0, 1.0, 1.0]);
             return;
         }
-        let (x, y, w, h) = blit_rect(window, self.shake);
+        let (x, y, w, h) = self.placed(window, target, blit_rect(window, self.shake));
         self.blit_part(x, y, w, h, [0.0, 0.0, 1.0, 1.0]);
     }
 
@@ -484,6 +528,44 @@ impl Compositor {
             gl::Uniform4f(self.u_blit_uv, uv[0], uv[1], uv[2], uv[3]);
         }
         self.quad.draw();
+    }
+}
+
+/// `r`, a rectangle of `window`, scaled and moved into the letterbox's rectangle.
+fn place(lb: Letterbox, window: (u32, u32), r: (i32, i32, i32, i32)) -> (i32, i32, i32, i32) {
+    let sx = lb.rect.2 as f32 / window.0.max(1) as f32;
+    let sy = lb.rect.3 as f32 / window.1.max(1) as f32;
+    let x0 = lb.rect.0 + (r.0 as f32 * sx).round() as i32;
+    let y0 = lb.rect.1 + (r.1 as f32 * sy).round() as i32;
+    let x1 = lb.rect.0 + ((r.0 + r.2) as f32 * sx).round() as i32;
+    let y1 = lb.rect.1 + ((r.1 + r.3) as f32 * sy).round() as i32;
+    (x0, y0, x1 - x0, y1 - y0)
+}
+
+#[cfg(test)]
+mod letterbox_tests {
+    use super::*;
+
+    #[test]
+    fn the_handhelds_screen_sits_centred_and_full_height_on_a_wide_framebuffer() {
+        let lb = letterbox((848, 480), (720, 480), false);
+        assert_eq!(lb.rect, (64, 0, 720, 480));
+        assert_eq!(place(lb, (720, 480), (0, 0, 720, 480)), (64, 0, 720, 480));
+    }
+
+    #[test]
+    fn a_stretched_game_fills_the_framebuffer() {
+        let lb = letterbox((848, 480), (720, 480), true);
+        assert_eq!(lb.rect, (0, 0, 848, 480));
+        assert_eq!(place(lb, (720, 480), (0, 0, 720, 480)), (0, 0, 848, 480));
+        // a part of the window keeps its place within it
+        assert_eq!(place(lb, (720, 480), (360, 0, 360, 240)), (424, 0, 424, 240));
+    }
+
+    #[test]
+    fn a_framebuffer_of_the_windows_own_shape_is_filled() {
+        assert_eq!(letterbox((720, 480), (720, 480), false).rect, (0, 0, 720, 480));
+        assert_eq!(letterbox((1440, 960), (720, 480), false).rect, (0, 0, 1440, 960));
     }
 }
 

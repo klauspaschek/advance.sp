@@ -1,9 +1,11 @@
 //! The framebuffer's scanout layer on the HDMI output. `System/hdmi.sh` switches the display
-//! engine to the HDMI transmitter and keeps fb0 at the panel's size, but the driver's fbdev glue
-//! has no `set_par`: the layer keeps the LCD's window, a 720x480 corner of a 1920x1080 signal.
-//! [`settle`] zeroes the pan offset and writes the layer so the display engine scales the
-//! framebuffer to the full height of the TV, centred, as NextUI does before its apps start. It
-//! runs before the EGL surface exists, and again shortly after (see [`settle_later`]).
+//! engine to the HDMI transmitter and makes fb0 16:9 (848x480). On the RG SP the driver then
+//! scales the layer to the whole 1920x1080 signal, and puts that window back on every pan: a
+//! narrower window written here only flickers in between (seen on the first hardware test). So
+//! the 16:9 framebuffer is what keeps the picture's shape, slot's compositor centres the 3:2
+//! screen in it, and [`settle`] only mends a layer left with the LCD's window (a 720x480 corner
+//! of the signal, as the driver's fbdev glue has no `set_par`). It runs before the EGL surface
+//! exists, and again shortly after (see [`settle_later`]).
 //!
 //! Ported from Cartridge (github.com/NukeBomB3000/cartridge), GPL-3.0-or-later.
 
@@ -16,15 +18,12 @@ const ATTR_SYS: &str = "/sys/class/disp/disp/attr/sys";
 /// The HDMI signal's size: the display engine scales fb0 up into it.
 const OUT: (u32, u32) = (1920, 1080);
 
-/// Where a framebuffer of `fb` goes on the output: the full height, as wide as its shape
-/// takes, in the middle.
-fn window(fb: (u32, u32)) -> Rect {
-    let width = (u64::from(fb.0) * u64::from(OUT.1) / u64::from(fb.1.max(1))) as u32;
-    let width = width.min(OUT.0);
+/// Where the framebuffer goes on the output: all of it, as the driver itself places it.
+fn window() -> Rect {
     Rect {
-        x: ((OUT.0 - width) / 2) as i32,
+        x: 0,
         y: 0,
-        width,
+        width: OUT.0,
         height: OUT.1,
     }
 }
@@ -122,11 +121,11 @@ pub fn hdmi_active(sys: &str) -> bool {
     sys.contains("hdmi output")
 }
 
-/// Where a framebuffer of `fb` goes: on the HDMI output the full-height window of [`window`], on
-/// the LCD its own size.
+/// Where a framebuffer of `fb` goes: on the HDMI output the whole signal, on the LCD its own
+/// size.
 fn window_on(fb: (u32, u32), hdmi: bool) -> Rect {
     if hdmi {
-        window(fb)
+        window()
     } else {
         Rect {
             x: 0,
@@ -343,10 +342,12 @@ mod tests {
     }
 
     #[test]
-    fn the_window_is_full_height_and_centred() {
-        let w = window((1440, 960));
-        assert_eq!((w.x, w.y, w.width, w.height), (150, 0, 1620, 1080));
-        let wide = window((1920, 1080));
-        assert_eq!((wide.x, wide.width), (0, 1920));
+    fn on_hdmi_the_window_is_the_whole_signal_as_the_driver_keeps_it() {
+        let w = window_on((848, 480), true);
+        assert_eq!((w.x, w.y, w.width, w.height), (0, 0, 1920, 1080));
+        // the driver's own layer fits, so nothing is written to fight it
+        let mut config: LayerConfig = unsafe { std::mem::zeroed() };
+        commit(&mut config, (848, 480), w);
+        assert!(layer_fits(&config, (848, 480), window_on((848, 480), true)));
     }
 }

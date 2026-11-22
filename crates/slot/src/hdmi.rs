@@ -5,9 +5,10 @@
 //!
 //! Ported from Cartridge (github.com/NukeBomB3000/cartridge), GPL-3.0-or-later.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use slot_gfx::hdmi_active;
+use slot_store::{Shader, SlotState};
 
 use slot_input::Millis;
 
@@ -22,6 +23,70 @@ pub fn active() -> bool {
 /// Whether an audio route is the TV's.
 pub fn is_hdmi_route(route: &str) -> bool {
     route.trim() == HDMI_ROUTE
+}
+
+/// Where the sound goes when no headphones have it: the TV's speakers while HDMI has the
+/// picture, else the handheld's own (the empty route).
+pub fn default_route() -> &'static str {
+    if active() {
+        HDMI_ROUTE
+    } else {
+        ""
+    }
+}
+
+/// The handheld's own shaders, kept while slot is on a TV: the TV gets none, and the
+/// handheld gets back what it had, whatever was chosen on the TV.
+pub const LCD_SHADERS_FILE: &str = "Config/hdmi-lcd-shaders.txt";
+
+/// Starting on a TV puts the handheld's shaders aside (once: a restart on the TV keeps the
+/// first copy) and turns them off; starting on the handheld's screen puts them back. Says
+/// whether `state` changed and should be saved. The copy is written before the shaders change
+/// and removed only after they are back, so power lost in between loses neither.
+pub fn swap_shaders(root: &Path, state: &mut SlotState, on_tv: bool) -> bool {
+    let file = root.join(LCD_SHADERS_FILE);
+    if on_tv {
+        if !file.exists() {
+            let kept = format!(
+                "shader_gba={}\nshader_gb={}\nshader_gbc={}\n",
+                state.shader_gba.name(),
+                state.shader_gb.name(),
+                state.shader_gbc.name()
+            );
+            if let Err(e) = slot_store::atomic_write(&file, kept.as_bytes()) {
+                eprintln!("slot: hdmi: could not keep the handheld's shaders: {e}");
+                return false;
+            }
+        }
+        let off = [state.shader_gba, state.shader_gb, state.shader_gbc] != [Shader::Off; 3];
+        state.shader_gba = Shader::Off;
+        state.shader_gb = Shader::Off;
+        state.shader_gbc = Shader::Off;
+        return off;
+    }
+    let Ok(kept) = std::fs::read_to_string(&file) else {
+        return false;
+    };
+    for line in kept.lines() {
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        let Some(shader) = Shader::parse(value) else {
+            continue;
+        };
+        match key.trim() {
+            "shader_gba" if Shader::GBA.contains(&shader) => state.shader_gba = shader,
+            "shader_gb" if Shader::GB.contains(&shader) => state.shader_gb = shader,
+            "shader_gbc" if Shader::GB.contains(&shader) => state.shader_gbc = shader,
+            _ => {}
+        }
+    }
+    true
+}
+
+/// Removes the copy [`swap_shaders`] put back, once the state holding them is saved.
+pub fn forget_kept_shaders(root: &Path) {
+    let _ = std::fs::remove_file(root.join(LCD_SHADERS_FILE));
 }
 
 /// Saves nothing itself: once the game is saved, replaces this process with
@@ -172,6 +237,41 @@ mod tests {
         for t in 0..60 {
             assert!(!watch.poll(t * 1000));
         }
+    }
+
+    #[test]
+    fn the_tv_gets_no_shader_and_the_handheld_gets_its_own_back() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir(root.path().join("Config")).unwrap();
+        let mut state = SlotState::default();
+        state.shader_gba = Shader::Grid;
+        state.shader_gb = Shader::Simpletex;
+        state.shader_gbc = Shader::Lcd3x;
+        assert!(swap_shaders(root.path(), &mut state, true));
+        assert_eq!(
+            [state.shader_gba, state.shader_gb, state.shader_gbc],
+            [Shader::Off; 3]
+        );
+        // a shader chosen on the TV, then a restart on the TV: the handheld's copy stays
+        state.shader_gba = Shader::Dot;
+        assert!(swap_shaders(root.path(), &mut state, true));
+        assert!(!swap_shaders(root.path(), &mut state, true), "already off");
+        // back on the handheld: its own shaders, whatever the TV had
+        state.shader_gba = Shader::Dot;
+        assert!(swap_shaders(root.path(), &mut state, false));
+        assert_eq!(
+            [state.shader_gba, state.shader_gb, state.shader_gbc],
+            [Shader::Grid, Shader::Simpletex, Shader::Lcd3x]
+        );
+        assert!(
+            root.path().join(LCD_SHADERS_FILE).exists(),
+            "kept until the state is saved"
+        );
+        forget_kept_shaders(root.path());
+        // on the handheld with nothing kept, nothing changes
+        state.shader_gba = Shader::Dot;
+        assert!(!swap_shaders(root.path(), &mut state, false));
+        assert_eq!(state.shader_gba, Shader::Dot);
     }
 
     #[test]

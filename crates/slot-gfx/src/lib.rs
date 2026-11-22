@@ -30,7 +30,7 @@ pub use bezel::{framed, game_rect, lifted_rect, screen_rect};
 pub use draw::{Draw, TexId};
 pub use fbdev::{egl_error, panel_mode, panel_size, FbdevSurface};
 pub use hdmi_layer::hdmi_active;
-pub use fbo::{canvas_size, Compositor, BACKDROP};
+pub use fbo::{canvas_size, letterbox, Compositor, Letterbox, BACKDROP};
 pub use grade::{blue_light_gain, BLUE_LIGHT_MAX};
 #[cfg(target_os = "macos")]
 pub use headless::HeadlessSurface;

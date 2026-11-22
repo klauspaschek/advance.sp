@@ -41,13 +41,25 @@ pub fn run() {
         }
     };
     slot::boot_time::mark("compositor");
-    let panel = surface.window_size();
+    let framebuffer = surface.window_size();
+    // on a TV the framebuffer is 16:9 (hdmi.sh): slot still draws the handheld's 720x480
+    // screen, upright, and places it in the middle of the framebuffer each frame
+    let on_tv = slot::hdmi::active();
+    let panel = if on_tv {
+        (slot_gfx::OUT_W, slot_gfx::OUT_H)
+    } else {
+        framebuffer
+    };
     let env = |key| std::env::var(key).ok();
-    let turn = panel_turn(
-        panel,
-        slot::baseos::var("BASEOS_PANEL_ROTATION_CCW").as_deref(),
-        env("SLOT_ROTATE").as_deref(),
-    );
+    let turn = if on_tv {
+        PanelTurn::None
+    } else {
+        panel_turn(
+            panel,
+            slot::baseos::var("BASEOS_PANEL_ROTATION_CCW").as_deref(),
+            env("SLOT_ROTATE").as_deref(),
+        )
+    };
     let turned = turn != PanelTurn::None;
     let window = if turned { (panel.1, panel.0) } else { panel };
     eprintln!(
@@ -60,6 +72,12 @@ pub fn run() {
         "slot: panel {}x{}, canvas {}x{}, turn {turn:?}",
         panel.0, panel.1, window.0, window.1
     );
+    if on_tv {
+        eprintln!(
+            "slot: hdmi: framebuffer {}x{}, the screen centred in it",
+            framebuffer.0, framebuffer.1
+        );
+    }
     if turned {
         if let Err(e) = compositor.set_panel_turn(panel, turn == PanelTurn::Ccw) {
             eprintln!("slot: {e}");
@@ -163,6 +181,10 @@ pub fn run() {
             }
         }
 
+        if on_tv {
+            let fill = frontend.app().tv_fills_screen();
+            compositor.set_letterbox(Some(slot_gfx::letterbox(framebuffer, window, fill)));
+        }
         frontend.render(&mut compositor, window);
         let swap = Instant::now();
         if let Err(e) = surface.swap() {

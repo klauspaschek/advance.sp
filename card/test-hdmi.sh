@@ -13,8 +13,13 @@ fail() {
 	exit 1
 }
 
+# fbset records what it was asked for
+mkdir -p "$TMP/bin"
+printf '#!/bin/sh\necho "$*" >> "%s/fbset"\n' "$TMP" > "$TMP/bin/fbset"
+chmod +x "$TMP/bin/fbset"
+
 setup() {
-	rm -rf "$TMP/sys" "$TMP/run"
+	rm -rf "$TMP/sys" "$TMP/run" "$TMP/fbset"
 	mkdir -p "$TMP/sys/dbg" "$TMP/sys/fb0" "$TMP/run"
 	: > "$TMP/sys/dbg/start"
 	echo "720,960" > "$TMP/sys/fb0/virtual_size"
@@ -27,7 +32,7 @@ hdmi() {
 	SLOT_HDMI_DBG="$TMP/sys/dbg" SLOT_HDMI_FB="$TMP/sys/fb0" SLOT_HDMI_FBDEV="$TMP/fb" \
 		SLOT_HDMI_EXTCON="$TMP/sys/extcon" SLOT_HDMI_DISP="$TMP/sys/disp" \
 		SLOT_AUDIO_ROUTE="$TMP/run/route" SLOT_HDMI_LCD_SIZE="$TMP/run/lcd-size" \
-		SLOT_HDMI_POLL=0 sh "$SCRIPT" "$@"
+		SLOT_HDMI_POLL=0 PATH="$TMP/bin:$PATH" sh "$SCRIPT" "$@"
 }
 
 # no cable, on the LCD: nothing is touched
@@ -46,6 +51,7 @@ hdmi sync || true
 [ "$(cat "$TMP/sys/dbg/command")" = switch ] || fail "no switch command"
 [ "$(cat "$TMP/run/lcd-size")" = "720 480" ] || fail "the LCD's size was not remembered"
 [ "$(cat "$TMP/run/route")" = "plughw:CARD=ahubhdmi,DEV=0" ] || fail "the sound did not follow the TV"
+grep -q -- "-g 848 480 848 960 32" "$TMP/fbset" || fail "the framebuffer was not made 16:9 for the TV"
 
 # already on the TV with headphones chosen: they keep the sound
 setup 1 "hdmi output mode(10)"
@@ -60,6 +66,7 @@ echo "plughw:CARD=ahubhdmi,DEV=0" > "$TMP/run/route"
 echo "720 480" > "$TMP/run/lcd-size"
 hdmi sync || true
 [ "$(cat "$TMP/sys/dbg/param")" = "1 0" ] || fail "not switched back to the LCD"
+grep -q -- "-g 720 480 720 960 32" "$TMP/fbset" || fail "the framebuffer did not get the panel's size back"
 [ ! -s "$TMP/run/route" ] || fail "the TV kept the sound after the cable was pulled"
 
 # pulled with headphones chosen: their route stays

@@ -14,10 +14,10 @@
 #   active   exit 0 while the HDMI transmitter has the output
 #   status   one line for the session log: cable, output, framebuffer and sound route
 #
-# The signal is 1080p60 whatever the TV is. slot keeps drawing its 720x480 picture into a
-# framebuffer of that size, and the display engine scales the layer up to the full height of
-# the TV, centred (slot-gfx's hdmi_layer places it). Without a cable this script changes
-# nothing: `sync` on the LCD returns at once.
+# The signal is 1080p60 whatever the TV is. The display engine scales the framebuffer to the
+# whole signal, so on HDMI it is made 16:9 (848x480, a 64-byte aligned row near 853.3) and slot
+# draws its 720x480 screen in the middle of it, at its own shape. Without a cable this script
+# changes nothing: `sync` on the LCD returns at once.
 #
 # Ported from Cartridge (github.com/NukeBomB3000/cartridge), GPL-3.0-or-later; the switch was
 # found by pvaibhav in the NextUI port for BaseOS.
@@ -33,6 +33,7 @@ HDMI_ROUTE='plughw:CARD=ahubhdmi,DEV=0'
 HDMI_PARAM="4 10 0 0 0x4 0x101 0 0 0 8"
 LCD_PARAM="1 0"
 LCD_SIZE=${SLOT_HDMI_LCD_SIZE:-/run/slot-lcd-size}
+TV_SIZE="848 480"
 
 plugged() {
 	[ "$(sed -n 's/^HDMI=//p' "$EXTCON" 2>/dev/null)" = 1 ]
@@ -108,7 +109,7 @@ switch() {
 			vs="$(cat "$FB/virtual_size")"
 			echo "${vs%,*} $((${vs#*,} / 2))" > "$LCD_SIZE"
 		fi
-		set -- hdmi "$HDMI_PARAM" $(panel_size)
+		set -- hdmi "$HDMI_PARAM" $TV_SIZE
 	else
 		set -- lcd "$LCD_PARAM" $(panel_size)
 	fi
@@ -119,7 +120,7 @@ switch() {
 	echo "$2" > "$DBG/param"
 	echo 1 > "$DBG/start"
 	wait_for "$1"
-	# slot draws the panel's own size on either output
+	# the TV's 16:9 framebuffer, or the panel's own size back on the LCD
 	fb_size "$3" "$4"
 	sleep 0.25
 	echo 0 > "$FB/blank"

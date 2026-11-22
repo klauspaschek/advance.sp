@@ -75,8 +75,10 @@ Connect the RG SP's mini HDMI port to a TV with a mini-HDMI cable or adapter. Pl
 
 | On the TV | |
 | :--- | :--- |
-| Picture | The TV receives 1080p at 60 Hz. The handheld's 3:2 picture fills the TV's height and is centred, with black bars at the sides. The handheld's own screen is off. |
-| Sound | Plays through the TV, unless Bluetooth or USB headphones already have it. **Sound** gains a **TV (HDMI)** output, so you can switch between the TV and headphones. Pulling the cable gives the sound back to the handheld. |
+| Picture | The TV receives 1080p at 60 Hz. The handheld's 3:2 screen fills the TV's height and is centred, with black bars at the sides. The handheld's own screen is off. |
+| Screen size | Set a game to **Stretch** (right stick, or **Scaling** in the in-game quick menu) to fill the whole 16:9 TV while it plays; every other size keeps the handheld's shape. On the handheld itself, a GBA game fills the screen at every size. |
+| Shader | Turned off on the TV. When you unplug, the handheld gets back the shaders it had before you plugged in, whatever you chose on the TV. |
+| Sound | Plays through the TV, unless Bluetooth or USB headphones already have it. **Sound** gains a **TV (HDMI)** output, so you can switch between the TV and headphones. Headphones that disconnect, or are forgotten, or Bluetooth switched off, give the sound back to the TV. Pulling the cable gives the TV's sound back to the handheld. |
 | Lid | Closing it does not put the handheld to sleep, so you can fold it away and play with a controller. |
 
 Without a cable nothing changes.
@@ -84,7 +86,7 @@ Without a cable nothing changes.
 <details>
 <summary><strong>If the TV stays dark</strong></summary>
 
-Every start with a cable in adds a line such as `hdmi: cable in, output hdmi, fb 720,960, sound 'plughw:CARD=ahubhdmi,DEV=0'` to `Logs/slot-session.log`. If the switch failed, the log says why. Please include that file, and `Logs/slot.log`, when you report a problem.
+Every start with a cable in adds a line such as `hdmi: cable in, output hdmi, fb 848,960, sound 'plughw:CARD=ahubhdmi,DEV=0'` to `Logs/slot-session.log`. If the switch failed, the log says why. Please include that file, and `Logs/slot.log`, when you report a problem.
 
 </details>
 

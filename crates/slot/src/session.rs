@@ -434,7 +434,8 @@ impl Session {
                 if std::fs::read_to_string(crate::usb_audio::route_path())
                     .is_ok_and(|s| s.trim() == route)
                 {
-                    let _ = crate::usb_audio::write_route("");
+                    // the TV's speakers while it has the picture, else the handheld's
+                    let _ = crate::usb_audio::write_route(crate::hdmi::default_route());
                 }
             }
             if let Some(menu) = &mut self.app.bluetooth {

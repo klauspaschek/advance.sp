@@ -132,6 +132,13 @@ bt() {
     log "exit=$rc"
     return "$rc"
 }
+# Where the sound goes when no headphones have it: the TV's speakers while HDMI has the picture,
+# else the handheld's own (an empty route).
+default_route() {
+    if grep -q 'hdmi output' "${SLOT_HDMI_DISP:-/sys/class/disp/disp/attr/sys}" 2>/dev/null; then
+        echo 'plughw:CARD=ahubhdmi,DEV=0'
+    fi
+}
 route() {
     mkdir -p "$(dirname "$ROUTE")"
     printf '%s\n' "$1" > "$ROUTE.$$"
@@ -776,7 +783,7 @@ case "$VERB" in
         current=$(cat "$ROUTE" 2>/dev/null || true)
         if [ "$current" = "bluealsa:DEV=$TARGET,PROFILE=a2dp" ]; then
             info=$(bt info "$TARGET") || true
-            if printf '%s\n' "$info" | grep -q '^[[:space:]]*Connected: no[[:space:]]*$'; then route ''; fi
+            if printf '%s\n' "$info" | grep -q '^[[:space:]]*Connected: no[[:space:]]*$'; then route "$(default_route)"; fi
         fi
         # Keep the saved device for reconnect on the next startup.
         emit_list
@@ -789,7 +796,7 @@ case "$VERB" in
         current=$(cat "$ROUTE" 2>/dev/null || true)
         case "$current" in
             plughw:CARD=*,DEV=*) output=$current ;;
-            *) route ''; output=speaker ;;
+            *) output=$(default_route); route "$output"; output=${output:-speaker} ;;
         esac
         # Do not start services merely to shut them down.
         timeout -s KILL 3 "$BT" pairable off >/dev/null 2>&1 || true
@@ -835,7 +842,7 @@ case "$VERB" in
         ;;
     forget)
         STAGE='forget pairing'
-        if [ -f "$PREF" ] && [ "$(cat "$PREF")" = "$TARGET" ]; then route ''; rm -f "$PREF"; fi
+        if [ -f "$PREF" ] && [ "$(cat "$PREF")" = "$TARGET" ]; then route "$(default_route)"; rm -f "$PREF"; fi
         if [ -f "$PADS" ]; then
             grep -vix "$TARGET" "$PADS" > "$PADS.$$" || true
             if [ -s "$PADS.$$" ]; then mv -f "$PADS.$$" "$PADS"; else rm -f "$PADS.$$" "$PADS"; fi

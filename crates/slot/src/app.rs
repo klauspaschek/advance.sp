@@ -895,6 +895,13 @@ impl App {
         app.power_settings = crate::power_settings::PowerSettings::read(root);
         app.pad_faces_by_position = crate::bluetooth::pad_faces_by_position(root);
         app.on_tv = crate::hdmi::active();
+        // the TV shows the game without a shader; the handheld gets its own back
+        if crate::hdmi::swap_shaders(root, &mut app.state, app.on_tv) {
+            app.persist();
+        }
+        if !app.on_tv {
+            crate::hdmi::forget_kept_shaders(root);
+        }
         for p in Platform::ALL { app.frame_blending[p as usize]=crate::frame_blending::read(root,p); }
         app.carousel = read_carousel(root);
         app.shortcuts = read_shortcuts(root);
@@ -2710,6 +2717,14 @@ impl App {
         self.on_tv
     }
 
+    /// On a TV, a game set to Stretch fills the TV's 16:9; everything else keeps the
+    /// handheld's 3:2 shape in the middle.
+    pub fn tv_fills_screen(&self) -> bool {
+        self.on_tv
+            && matches!(self.phase, Phase::Playing { .. })
+            && self.video_mode == VideoMode::Stretch
+    }
+
     /// A cable went into the HDMI port or out of it: the game is saved where it stands, so that
     /// slot can end and BaseOS start it again on the other output, back in the same game.
     /// Returns false while that would cut a link session short, or while slot is already
@@ -2725,6 +2740,9 @@ impl App {
         self.flush_resume();
         self.settle_saves();
         self.persist();
+        // a restart for the cable is no crash: a game in its first seconds must not come back
+        // on the shelf with its resume state put aside
+        self.clear_loading_mark();
         true
     }
 
