@@ -196,7 +196,7 @@ jobs:
 
           ## advance.sp
 
-          slot.sp for the RG SP, extended with Bluetooth game controllers (pairing, a Nintendo or Xbox face-button layout, screenshot, save/load state, rewind, fast-forward and shader shortcuts on the extra buttons, and waking from light sleep) and a Bluetooth tile for the radio, headphones and controllers. HDMI output is next. See the [README](https://github.com/jgraving/slot#readme) for details.
+          slot.sp for the RG SP, extended with Bluetooth game controllers (pairing, a Nintendo or Xbox face-button layout, screenshot, save/load state, volume and screen-size shortcuts on the extra buttons, a button checker, and waking from light sleep), a Bluetooth tile for the radio, headphones and controllers, headphone volume buttons that stay in step with the handheld, and a new boot logo. HDMI output is next. See the [README](https://github.com/klauspaschek/advance.sp#readme) for details.
 
           Built and regression-tested on ARM64; slot, mGBA and gpSP are verified AArch64 binaries. Tested on an RG SP; other handhelds slot.sp supports are untested.
 

@@ -66,7 +66,9 @@ The speaker, wired headphones, Bluetooth and USB each remember their own volume 
 
 A speaker-with-a-slash icon stays at the top of the carousel and menus while the active output is muted or its volume is zero. It appears beside the Bluetooth or headphones indicator, so both the connection and mute state remain visible.
 
-Headphones with their own volume controls may also need those controls adjusted. Use the handheld's volume indicator to set slot.sp's level.
+Coming out of mute, <kbd>VOL+</kbd> starts at the lowest step (5%) instead of jumping back to the old level, and <kbd>VOL−</kbd> stays silent. Toggling mute again without touching the volume brings the previous level back.
+
+Bluetooth headphones that support absolute volume (most do) stay in step with the handheld: their own buttons move slot's level, slot's buttons move theirs, and muting silences them too, so their buttons can turn the sound back up from zero. Headphones without it keep a separate volume of their own; use the handheld's volume indicator to set slot's level.
 
 In kid mode, volume stays within the parent's [volume limit](KID-MODE.md#time--volume-limits). Open **Sound** in the kid menu to adjust Volume.
 
