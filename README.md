@@ -2,13 +2,13 @@
 
 <img src=".github/resources/advance-sp-logo.png" width="560" alt="ADVANCE·SP">
 
-**slot.sp, extended for the couch: Bluetooth game controllers today, HDMI to the TV next.**
+**slot.sp, extended for the couch: Bluetooth game controllers and HDMI to the TV.**
 
 **[Download](https://github.com/klauspaschek/advance.sp/releases/latest)** · **[What's new](#what-advancesp-adds)** · **[Controllers](#bluetooth-controllers)** · **[TV](#on-a-tv-hdmi)** · **[Install & update](#install-and-update)** · **[Credits](#credits)**
 
 </div>
 
-**advance.sp** is a launcher for the Anbernic **RG SP**, built on [slot.sp](https://github.com/jgraving/slot.sp) by Jake Graving. It keeps everything slot.sp does: GBA, GB and GBC games as cartridges in an SP-styled carousel, save and resume, light and dark themes, Bluetooth and USB audio. It then adds what is needed to play on the sofa with a controller in hand. The controller and TV support is ported from [Cartridge](https://github.com/NukeBomB3000/cartridge), a sibling fork of the same launcher family.
+**advance.sp** is a launcher for the Anbernic **RG SP**, built on [slot.sp](https://github.com/jgraving/slot.sp) by Jake Graving. It keeps everything slot.sp does: GBA, GB and GBC games as cartridges in an SP-styled carousel, save and resume, light and dark themes, Bluetooth and USB audio. It then adds what is needed to play on the sofa: a controller in hand and the game on the TV. The controller and TV support is ported from [Cartridge](https://github.com/NukeBomB3000/cartridge), a sibling fork of the same launcher family.
 
 ## What advance.sp adds
 
