@@ -30,7 +30,7 @@ For limits on active play, use [kid mode](KID-MODE.md#time--volume-limits).
 
 ## Startup animation
 
-**Power & lid → Boot Animation** shows or skips the slot.sp startup animation.
+**Power & lid → Boot Animation** shows or skips the advance.sp startup animation.
 
 ## Power buttons
 

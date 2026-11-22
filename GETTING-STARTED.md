@@ -10,8 +10,8 @@ Use the System ZIP to update an existing installation, or the SD2 ZIP for a new 
 
 | Download | Use it for |
 | :--- | :--- |
-| **[slot.sp-System.zip](https://github.com/jgraving/slot.sp/releases/latest/download/slot.sp-System.zip)** | Updating a card that already runs slot or slot.sp. Contains the `System` folder. |
-| **[slot.sp-SD2.zip](https://github.com/jgraving/slot.sp/releases/latest/download/slot.sp-SD2.zip)** | A new content card, with the folder structure and starting settings. |
+| **[slot.sp-System.zip](https://github.com/klauspaschek/advance.sp/releases/latest/download/slot.sp-System.zip)** | Updating a card that already runs slot, slot.sp or advance.sp. Contains the `System` folder. |
+| **[slot.sp-SD2.zip](https://github.com/klauspaschek/advance.sp/releases/latest/download/slot.sp-SD2.zip)** | A new content card, with the folder structure and starting settings. |
 
 ## Update an existing installation
 
@@ -27,7 +27,7 @@ Your `Games`, `Saves`, `States`, `Labels` and `Config` folders stay in place. Wi
 
 ## First installation
 
-slot.sp runs on **BaseOS**. Use the [BaseOS installation instructions](https://slot-cfw.fyi/installing/) to prepare the operating-system card, and use this fork's **slot.sp-SD2.zip** for the game-launcher files.
+advance.sp runs on **BaseOS**. Use the [BaseOS installation instructions](https://slot-cfw.fyi/installing/) to prepare the operating-system card, and use this fork's **slot.sp-SD2.zip** for the game-launcher files.
 
 For a two-card setup:
 
@@ -80,7 +80,7 @@ Keep a game's filename consistent when moving its artwork or saves: these files 
 <details>
 <summary><strong>Verify a download or identify a build</strong></summary>
 
-The [release page](https://github.com/jgraving/slot.sp/releases/latest) includes `SHA256SUMS` and `build-info.json`. The first lets you verify the ZIP's checksum; the second identifies the source commit used for that release.
+The [release page](https://github.com/klauspaschek/advance.sp/releases/latest) includes `SHA256SUMS` and `build-info.json`. The first lets you verify the ZIP's checksum; the second identifies the source commit used for that release.
 
 On Linux, with the ZIP and `SHA256SUMS` in the same directory:
 
@@ -96,7 +96,7 @@ Next: [Buttons & shortcuts](CONTROLS.md) · [Games & artwork](LIBRARY.md)
 
 ## Updates from the handheld
 
-Open **General → Updates** while Wi-Fi is connected. Launcher updates target this fork's `jgraving/slot.sp` releases and stage its verified `slot.sp-System.zip`; choose **Restart to install** when ready. The updater keeps Config, Games, Saves and custom System additions. BaseOS updates are separate, offered only for the detected compatible target and adequate battery or charging. Installation is explicit. This integration is still in the OTA test draft and needs physical interruption/recovery testing before release.
+Open **General → Updates** while Wi-Fi is connected. Launcher updates target this fork's `klauspaschek/advance.sp` releases and stage its verified `slot.sp-System.zip` (the file keeps slot.sp's name so the updater stays compatible); choose **Restart to install** when ready. The updater keeps Config, Games, Saves and custom System additions. BaseOS updates are separate, offered only for the detected compatible target and adequate battery or charging. Installation is explicit.
 
 **General → Automatic time** enables background UTC correction over a connected network. **Time zone** chooses the local UTC offset and applies immediately. The offset is manual, including daylight-saving changes. Selecting Updates or Automatic time while disconnected opens Network with a Wi-Fi-needed pill.
 

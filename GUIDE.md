@@ -1,10 +1,10 @@
 # 📖 User guide
 
-[← slot.sp](README.md)
+[← advance.sp](README.md)
 
 Browse your games as cartridges, press A to play, and use MENU for settings. This guide explains what each feature does and which buttons to use. For a new card, start with [installation](GETTING-STARTED.md).
 
-![The game carousel in slot.sp](previews/current/light/carousel.png)
+![The game carousel in advance.sp](previews/current/light/carousel.png)
 
 ## Find a feature
 
@@ -44,4 +44,4 @@ The guides show the default controls. If you remap them, the on-screen button hi
 
 ## About the examples
 
-Images and clips are made with the current interface and sample cartridges. Example gameplay and gallery pictures use test patterns. slot.sp does not include games. Gallery examples use Light mode. Save-state and link examples use Dark mode.
+Images and clips are made with the current interface and sample cartridges. Example gameplay and gallery pictures use test patterns. advance.sp does not include games. Gallery examples use Light mode. Save-state and link examples use Dark mode.
