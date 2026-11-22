@@ -343,7 +343,9 @@ fn release_logs() {
     }
 }
 
-fn close_on_exec() {
+/// Marks every descriptor but stdio close-on-exec, so a process that execs another program hands
+/// it no devices.
+pub fn close_on_exec() {
     let Ok(fds) = fs::read_dir("/proc/self/fd") else {
         return;
     };

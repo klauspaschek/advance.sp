@@ -2,6 +2,15 @@
 
 PR #215 merged as `7b4b9b20149c57d063f8aeaf6e63d7c49aaf6ae0` after all six workflows passed on `4c775ddfd7f4686818dbf65c578ff46de22e6fc8`; the merge tree equals the tested tree. Native Wi-Fi and corrected appearance-heading frames were inspected. This Studio checkout incorporates that verified main tree; runtime files merged cleanly and both recovery logs are retained. Publish on PR #216 and require fresh combined-source CI, plus inspection of the corrected anchored chrome and picker/Save captures, before merging Studio.
 
+
+## HDMI out — 2026-11-22
+
+Branch `feature/hdmi` (port from Cartridge, commit `3ee6b913`) merged with main `1c410578`. User's mini-HDMI adapter has arrived; goal is a test build for the first hardware run. Review fixes: the hotplug watcher now compares the cable with its state at slot's start, not with the output, so an output `hdmi.sh` cannot switch restarts slot once instead of every 30 s (the `/run/slot-hdmi-restart` marker is gone); on a cable change slot tears down GL/EGL, marks descriptors close-on-exec and execs `System/launch_frontend.sh` in its own process, so the restart no longer depends on BaseOS respawning a frontend that exits (unverified on BaseOS); the launcher unsets an inherited `SLOT_FB_SIZE`; `hdmi.sh` mounts debugfs if absent, reports a missing switch on stderr, and gains `status`, logged to `Logs/slot-session.log` whenever a cable is in or HDMI is active. README documents TV use; status row says built, awaiting first RG SP test.
+
+Local validation (Rust 1.96 now available locally): `slot` lib tests `hdmi` (6) and `bluetooth::menu_tests` (37), `slot-gfx` lib `hdmi_layer` (4), `cargo check -p slot --bin slot --features device` (stub pkg-config for ALSA/udev), `card/test-hdmi.sh`, `card/test-launch.sh`, `card/test-bluetooth.py` (75) and `git diff --check` pass. Host lacks libasound/libudev dev packages, so the full workspace build and ARM64 package run in CI. Device clippy fails on pre-existing lints in `slot-gfx/lava.rs` and `slot-store/play_history.rs`, not on this change.
+
+Pending hardware checks: cold boot with cable in; plug in and pull out on the shelf and mid-game (game resumes); picture centred full-height with no tearing across pages; TV sound and Sound → TV (HDMI); headphones keep the sound; lid closed on TV keeps playing; repeated replugging; no change without a cable. Unknowns from the port: the ALSA card name `ahubhdmi`, and whether the dispdbg switch parameters suit the RG SP's kernel.
+
 ## Cart Studio motion and affordances — 2026-11-07
 
 Separate branch `fix/studio-motion-affordances` from main `50a9c233`; Wi-Fi/OTA is independently published as PR #215. User explicitly requests separate PRs and authorizes push, PR creation and merge only after green checks. Add directional Finish/Shape chevrons and opening chevrons, anchor cartridge/title across submenus, separate rising card from the moving/shrinking highlighted cartridge, let only side cartridges retreat downward, improve printer spring motion and caption spacing. Next: separate cached layers, add motion regressions/native captures and validate exact source in CI. Hardware testing remains pending.

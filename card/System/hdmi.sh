@@ -1,5 +1,5 @@
 #!/bin/sh
-# hdmi.sh sync|on|off|plugged|active
+# hdmi.sh sync|on|off|plugged|active|status
 #
 # HDMI out through the RG SP's mini HDMI port (any H700 handheld with one). The display engine
 # drives one output at a time, the LCD or the HDMI transmitter. Switching goes through the
@@ -12,6 +12,7 @@
 #   on, off  force one
 #   plugged  exit 0 with a cable in
 #   active   exit 0 while the HDMI transmitter has the output
+#   status   one line for the session log: cable, output, framebuffer and sound route
 #
 # The signal is 1080p60 whatever the TV is. slot keeps drawing its 720x480 picture into a
 # framebuffer of that size, and the display engine scales the layer up to the full height of
@@ -96,7 +97,11 @@ switch() {
 	else
 		active || { audio off; return 0; }
 	fi
-	[ -w "$DBG/start" ] || exit 1
+	# the switch lives in debugfs, which not every boot mounts
+	if [ ! -e "$DBG" ] && [ -z "$SLOT_HDMI_DBG" ] && [ -d /sys/kernel/debug ]; then
+		mount -t debugfs debugfs /sys/kernel/debug 2>/dev/null
+	fi
+	[ -w "$DBG/start" ] || { echo "hdmi: no display switch at $DBG" >&2; exit 1; }
 	if [ "$1" = hdmi ]; then
 		# the LCD's size, once, before the framebuffer is touched for the TV
 		if [ ! -s "$LCD_SIZE" ]; then
@@ -124,13 +129,19 @@ switch() {
 case "$1" in
 plugged) plugged ;;
 active) active ;;
+status)
+	if plugged; then cable=in; else cable=out; fi
+	if active; then output=hdmi; else output=lcd; fi
+	echo "hdmi: cable $cable, output $output, fb $(cat "$FB/virtual_size" 2>/dev/null)," \
+		"sound '$(cat "$ROUTE" 2>/dev/null)'"
+	;;
 on) switch hdmi ;;
 off) switch lcd ;;
 sync)
 	if plugged; then switch hdmi; else switch lcd; fi
 	;;
 *)
-	echo "usage: hdmi.sh sync|on|off|plugged|active" >&2
+	echo "usage: hdmi.sh sync|on|off|plugged|active|status" >&2
 	exit 2
 	;;
 esac

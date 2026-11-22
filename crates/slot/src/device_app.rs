@@ -126,9 +126,14 @@ pub fn run() {
         if input.take_pad_arrival() && frontend.dozing() {
             input.press_power();
         }
-        // a cable in or out of the HDMI port: save, end, and let BaseOS start slot on the other
-        // output (launch_frontend.sh switches it first)
+        // a cable in or out of the HDMI port: save, then run the launcher again in this process,
+        // which switches the output before the new slot draws
         if hotplug.poll(started.elapsed().as_millis() as u64) && frontend.leave_for_cable() {
+            // as on a normal end: GL objects first, then the EGL surface and display
+            drop(compositor);
+            drop(surface);
+            let e = slot::hdmi::relaunch(&root);
+            eprintln!("slot: hdmi: could not run the launcher again: {e}");
             return;
         }
         if frontend.restarting() {

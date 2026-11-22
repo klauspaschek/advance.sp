@@ -4,7 +4,7 @@
 
 **slot.sp, extended for the couch: Bluetooth game controllers today, HDMI to the TV next.**
 
-**[Download](https://github.com/klauspaschek/advance.sp/releases/latest)** · **[What's new](#what-advancesp-adds)** · **[Controllers](#bluetooth-controllers)** · **[Install & update](#install-and-update)** · **[Credits](#credits)**
+**[Download](https://github.com/klauspaschek/advance.sp/releases/latest)** · **[What's new](#what-advancesp-adds)** · **[Controllers](#bluetooth-controllers)** · **[TV](#on-a-tv-hdmi)** · **[Install & update](#install-and-update)** · **[Credits](#credits)**
 
 </div>
 
@@ -17,7 +17,7 @@
 | 🎮 **Bluetooth game controllers**: pair, play, sleep and wake from the controller | ✅ Done, tested on an RG SP with an Xbox Wireless Controller |
 | 📶 **A Bluetooth tile** in the menu: one place for the radio, headphones and controllers | ✅ Done |
 | 🎧 **Headphones that behave**: their volume buttons and slot's stay in step, headphones that connect by themselves take the sound, and volume never jumps loud out of mute | ✅ Done |
-| 📺 **HDMI out** through the RG SP's mini HDMI port: plug in a TV and the picture follows the cable | 🚧 Next, ported from Cartridge |
+| 📺 **[HDMI out](#on-a-tv-hdmi)** through the RG SP's mini HDMI port: plug in a TV and the picture follows the cable | 🧪 Built, awaiting its first test on an RG SP |
 
 ### Menu changes from slot.sp
 
@@ -66,6 +66,25 @@ The handheld's own buttons keep working alongside the controller, and any remapp
 <summary><strong>Checking a new controller's buttons</strong></summary>
 
 Put an empty file named `TRACE_INPUT` at the root of the card and restart. advance.sp then records what every input device reports, and every press, in `Logs/input-trace.log`. Remove the file afterwards.
+
+</details>
+
+## On a TV (HDMI)
+
+Connect the RG SP's mini HDMI port to a TV with a mini-HDMI cable or adapter. Plugging the cable in or pulling it out works at any time, even mid-game: advance.sp saves the game, switches the picture to the other screen within a few seconds and carries on in the same game. It switches only after the cable has been in, or out, for two seconds, so wiggling the plug does nothing. If you are in a link session, it waits until the session ends.
+
+| On the TV | |
+| :--- | :--- |
+| Picture | The TV receives 1080p at 60 Hz. The handheld's 3:2 picture fills the TV's height and is centred, with black bars at the sides. The handheld's own screen is off. |
+| Sound | Plays through the TV, unless Bluetooth or USB headphones already have it. **Sound** gains a **TV (HDMI)** output, so you can switch between the TV and headphones. Pulling the cable gives the sound back to the handheld. |
+| Lid | Closing it does not put the handheld to sleep, so you can fold it away and play with a controller. |
+
+Without a cable nothing changes.
+
+<details>
+<summary><strong>If the TV stays dark</strong></summary>
+
+Every start with a cable in adds a line such as `hdmi: cable in, output hdmi, fb 720,960, sound 'plughw:CARD=ahubhdmi,DEV=0'` to `Logs/slot-session.log`. If the switch failed, the log says why. Please include that file, and `Logs/slot.log`, when you report a problem.
 
 </details>
 

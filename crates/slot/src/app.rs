@@ -2712,22 +2712,12 @@ impl App {
 
     /// A cable went into the HDMI port or out of it: the game is saved where it stands, so that
     /// slot can end and BaseOS start it again on the other output, back in the same game.
-    /// Returns false while that would cut a link session short, or when slot already restarted
-    /// for a cable less than half a minute ago (an output hdmi.sh could not switch would loop).
+    /// Returns false while that would cut a link session short, or while slot is already
+    /// shutting down; the watcher asks again a second later.
     pub fn leave_for_cable(&mut self) -> bool {
         if self.link_active() || self.shutting_down() {
             return false;
         }
-        let marker = std::path::Path::new("/run/slot-hdmi-restart");
-        let recent = std::fs::metadata(marker)
-            .and_then(|m| m.modified())
-            .ok()
-            .and_then(|at| at.elapsed().ok())
-            .is_some_and(|ago| ago < std::time::Duration::from_secs(30));
-        if recent {
-            return false;
-        }
-        let _ = std::fs::write(marker, "");
         eprintln!("slot: hdmi: the cable changed, starting again on the other output");
         if let Some(menu) = &mut self.network { menu.set_sharing_allowed(false); }
         self.close_game_menu();

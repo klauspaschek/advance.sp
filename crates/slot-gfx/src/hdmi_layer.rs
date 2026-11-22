@@ -290,7 +290,8 @@ fn commit_layer(fb: (u32, u32), win: Rect) {
             back.channel = 1;
             back.layer_id = 0;
             let param = [0, &mut back as *mut LayerConfig as c_ulong, 1, 0];
-            if ioctl(fd, DISP_LAYER_GET_CONFIG, param.as_ptr()) < 0 || layer_is_set(&back, fb, win) {
+            if ioctl(fd, DISP_LAYER_GET_CONFIG, param.as_ptr()) < 0 || layer_is_set(&back, fb, win)
+            {
                 break;
             }
             eprintln!(

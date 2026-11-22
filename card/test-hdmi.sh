@@ -68,4 +68,17 @@ echo "bluealsa:DEV=AA:BB:CC:DD:EE:FF,PROFILE=a2dp" > "$TMP/run/route"
 hdmi sync || true
 grep -q bluealsa "$TMP/run/route" || fail "pulling the cable dropped the headphones"
 
+# status names the cable, the output and the sound route
+setup 1 "hdmi output mode(10)"
+echo "plughw:CARD=ahubhdmi,DEV=0" > "$TMP/run/route"
+status="$(hdmi status)"
+[ "$status" = "hdmi: cable in, output hdmi, fb 720,960, sound 'plughw:CARD=ahubhdmi,DEV=0'" ] \
+	|| fail "status reads: $status"
+
+# no display switch in the kernel: the failure is said, not silent
+setup 1
+rm "$TMP/sys/dbg/start"
+err="$(hdmi sync 2>&1)" && fail "sync claimed to switch without a display switch"
+case "$err" in *"no display switch"*) ;; *) fail "the failure was not said: $err" ;; esac
+
 echo "hdmi: all passed"
