@@ -34,6 +34,11 @@ pub enum Toast {
     ShaderGrid,
     ShaderDot,
     ShaderSimpletex,
+    /// The game's screen size (Scaling), stepped by a shortcut with the menu closed.
+    PictureActual,
+    PictureStretch,
+    PictureFit,
+    PictureInteger,
     CardUnwritable,
     DeepSleepWake,
     SleepUnavailable,
@@ -48,7 +53,7 @@ pub enum Toast {
 }
 
 impl Toast {
-    const FIXED: [Toast; 33] = [
+    const FIXED: [Toast; 37] = [
         Toast::BluetoothConnected,
         Toast::BluetoothDisconnected,
         Toast::UsbConnected,
@@ -70,6 +75,10 @@ impl Toast {
         Toast::ShaderGrid,
         Toast::ShaderDot,
         Toast::ShaderSimpletex,
+        Toast::PictureActual,
+        Toast::PictureStretch,
+        Toast::PictureFit,
+        Toast::PictureInteger,
         Toast::CardUnwritable,
         Toast::DeepSleepWake,
         Toast::SleepUnavailable,
@@ -186,6 +195,10 @@ impl Toast {
             Toast::ShaderGrid => "Shader: Grid",
             Toast::ShaderDot => "Shader: Dot",
             Toast::ShaderSimpletex => "Shader: Simpletex",
+            Toast::PictureActual => "Scaling: Actual",
+            Toast::PictureStretch => "Scaling: Stretch",
+            Toast::PictureFit => "Scaling: Fit",
+            Toast::PictureInteger => "Scaling: Integer",
             Toast::CardUnwritable => "Can't write to SD card",
             Toast::DeepSleepWake => "Wake with Power",
             Toast::NightOn => "Night mode On",

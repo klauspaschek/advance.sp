@@ -49,6 +49,11 @@ struct BindCapture {
 }
 
 pub const INSERT_S: f32 = 0.73;
+/// How long a lid shut over the TV waits once the cable is out, for the hand to open it and play
+/// on: unplugging comes first, then opening.
+pub const LID_AFTER_TV_MS: Millis = 10_000;
+/// How soon after starting again a shut lid still counts as the one closed over the TV.
+const LID_FROM_TV_MS: Millis = 5_000;
 const INSERT_HOLD_S: f32 = 0.28;
 
 pub const SEATED_AT: f32 = INSERT_S - INSERT_HOLD_S;
@@ -357,6 +362,11 @@ pub struct App {
     pad_faces_by_position: bool,
     /// The HDMI transmitter has the output (checked at start: the cable restarts slot).
     on_tv: bool,
+    /// Started again because the TV's cable went out: until then, a lid found shut is the one
+    /// closed over the TV, and waits [`LID_AFTER_TV_MS`] instead of acting at once.
+    left_tv_until: Option<Millis>,
+    /// A lid shut over the unplugged TV acts at this time, unless it opens first.
+    lid_wait: Option<Millis>,
     /// A Bluetooth (or USB) controller is connected now.
     controllers: bool,
     pub(crate) kid_status_icon: Option<TexId>,
@@ -648,6 +658,8 @@ impl App {
             bluetooth_supported: false,
             pad_faces_by_position: true,
             on_tv: false,
+            left_tv_until: None,
+            lid_wait: None,
             controllers: false,
             kid_status_icon: None,
             ra_sync_indicator: None,
@@ -901,6 +913,9 @@ impl App {
         }
         if !app.on_tv {
             crate::hdmi::forget_kept_shaders(root);
+            if crate::hdmi::left_tv() {
+                app.arrive_from_tv();
+            }
         }
         for p in Platform::ALL { app.frame_blending[p as usize]=crate::frame_blending::read(root,p); }
         app.carousel = read_carousel(root);
@@ -2485,8 +2500,20 @@ impl App {
     /// as L1 and R1 step it in a Game Boy game: a controller's right stick does it in any game.
     pub fn step_picture(&mut self, larger: bool) {
         if matches!(self.phase, Phase::Playing { .. }) && self.in_game_menu().is_none() {
-            self.set_picture(self.video_mode.step(larger));
+            self.say_picture(self.video_mode.step(larger));
         }
+    }
+
+    /// A shortcut changed the screen size: with no menu showing the value, name it.
+    fn say_picture(&mut self, mode: VideoMode) {
+        self.set_picture(mode);
+        let said = match self.video_mode {
+            VideoMode::Actual => Toast::PictureActual,
+            VideoMode::Stretch => Toast::PictureStretch,
+            VideoMode::Fit => Toast::PictureFit,
+            VideoMode::Integer => Toast::PictureInteger,
+        };
+        self.hud.toast(said, self.now());
     }
 
     fn set_picture(&mut self, mode: VideoMode) {
@@ -2723,6 +2750,17 @@ impl App {
         self.on_tv
             && matches!(self.phase, Phase::Playing { .. })
             && self.video_mode == VideoMode::Stretch
+    }
+
+    /// This slot was started again because the TV's cable went out: a lid still shut over it
+    /// waits [`LID_AFTER_TV_MS`] before sleep or power off, so it can be opened to play on.
+    pub fn arrive_from_tv(&mut self) {
+        self.left_tv_until = Some(self.now() + LID_FROM_TV_MS);
+    }
+
+    /// The closed lid is waiting for the hand to open it after the TV was unplugged.
+    pub fn lid_waiting(&self) -> bool {
+        self.lid_wait.is_some()
     }
 
     /// A cable went into the HDMI port or out of it: the game is saved where it stands, so that
@@ -3194,7 +3232,11 @@ impl App {
         self.track_held_dir(action);
         match action {
             Action::LidClose => return self.lid_close(),
-            Action::LidOpen => return self.wake(),
+            Action::LidOpen => {
+                self.left_tv_until = None;
+                self.lid_wait = None;
+                return self.wake();
+            }
             Action::PowerPress => {
                 if self.link_active() {
                     self.end_link();
@@ -3385,12 +3427,12 @@ impl App {
                 Action::GbaDown(Btn::L1)
                     if self.slot_owns_the_shoulders() && !self.bound_to_game(Btn::L1) =>
                 {
-                    self.set_picture(self.video_mode.step(false))
+                    self.say_picture(self.video_mode.step(false))
                 }
                 Action::GbaDown(Btn::R1)
                     if self.slot_owns_the_shoulders() && !self.bound_to_game(Btn::R1) =>
                 {
-                    self.set_picture(self.video_mode.step(true))
+                    self.say_picture(self.video_mode.step(true))
                 }
                 Action::Eject => self.eject(),
                 Action::GameMenu => self.game_menu_shortcut(),
@@ -4777,6 +4819,13 @@ impl App {
     }
 
     fn timers(&mut self) {
+        // the lid stayed shut after the TV was unplugged: now it acts as set
+        if self.lid_wait.is_some_and(|at| self.now() >= at) {
+            self.lid_wait = None;
+            if !self.shutting_down() {
+                self.close_lid_now();
+            }
+        }
         #[cfg(feature = "device")]
         if let Some(root) = self.root.as_deref() {
             let online = !self.kids.active && !self.shutting_down() && !self.link_active()
@@ -6799,6 +6848,18 @@ impl App {
         if self.on_tv {
             return;
         }
+        // the TV was unplugged with the lid shut: time to open it and play on
+        let now = self.now();
+        if self.left_tv_until.take().is_some_and(|until| now <= until) {
+            self.lid_wait = Some(now + LID_AFTER_TV_MS);
+            return;
+        }
+        self.lid_wait = None;
+        self.close_lid_now();
+    }
+
+    /// The lid's own setting: sleep, deep sleep or power off.
+    fn close_lid_now(&mut self) {
         match self.power_settings.lid_close {
             2 => {
                 self.flush_resume();

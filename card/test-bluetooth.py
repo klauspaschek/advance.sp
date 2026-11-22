@@ -306,7 +306,9 @@ esac
         # out of their case, headphones connect themselves; BlueZ refuses a second connect
         (self.root / 'Config').mkdir()
         (self.root / 'Config/bluetooth-headphones').write_text(MAC)
-        for reason in ['org.bluez.Error.AlreadyConnected', 'org.bluez.Error.InProgress']:
+        for reason in ['org.bluez.Error.AlreadyConnected', 'org.bluez.Error.InProgress',
+                       # as BlueZ 5.66 on the RG SP says it
+                       'org.bluez.Error.Failed Operation already in progress']:
             (self.root / 'route').unlink(missing_ok=True)
             self.env['MOCK_CONNECT_ERROR'] = reason
             result = self.run_command('reconnect')

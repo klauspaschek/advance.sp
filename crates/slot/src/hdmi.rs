@@ -93,12 +93,28 @@ pub fn forget_kept_shaders(root: &Path) {
 /// `System/launch_frontend.sh`, which runs `hdmi.sh sync` and starts slot on the other output.
 /// The process keeps its place under BaseOS, whatever BaseOS does when a frontend ends. Every
 /// descriptor but stdio is closed on the way, so the GPU, framebuffer and sound devices are free
-/// for the new slot. Returns only if the launcher could not be run.
-pub fn relaunch(root: &std::path::Path) -> std::io::Error {
+/// for the new slot. `left_tv` tells the new slot that the cable went out, so a lid shut over the
+/// TV waits a moment ([`LEFT_TV`]). Returns only if the launcher could not be run.
+pub fn relaunch(root: &std::path::Path, left_tv: bool) -> std::io::Error {
     use std::os::unix::process::CommandExt;
     let launcher = root.join("System/launch_frontend.sh");
     slot_power::close_on_exec();
-    std::process::Command::new("/bin/sh").arg(launcher).exec()
+    let mut command = std::process::Command::new("/bin/sh");
+    command.arg(launcher);
+    if left_tv {
+        command.env(LEFT_TV, "1");
+    } else {
+        command.env_remove(LEFT_TV);
+    }
+    command.exec()
+}
+
+/// Set for a slot started again because the HDMI cable went out.
+pub const LEFT_TV: &str = "SLOT_LEFT_TV";
+
+/// Whether this slot was started again because the HDMI cable went out.
+pub fn left_tv() -> bool {
+    std::env::var_os(LEFT_TV).is_some()
 }
 
 const EXTCON: &str = "/sys/class/extcon/hdmi/state";

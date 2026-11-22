@@ -580,11 +580,11 @@ connect() {
     # Headphones taken out of their case connect by themselves: BlueZ then says they are
     # connected already, or still connecting, instead of connecting them. That is no failure:
     # whether the link and its audio are ready is checked below, as after any connect.
-    case $CONNECT_REASON in
-        *AlreadyConnected*|*InProgress*|*'In Progress'*)
-            log "The headphones are connecting by themselves ($CONNECT_REASON)"
-            CONNECT_REASON='' ;;
-    esac
+    # BlueZ 5.66 also says "org.bluez.Error.Failed Operation already in progress".
+    if printf '%s\n' "$CONNECT_REASON" | grep -Eqi 'AlreadyConnected|in ?progress'; then
+        log "The headphones are connecting by themselves ($CONNECT_REASON)"
+        CONNECT_REASON=''
+    fi
     # An explicit Connect rejection is final after the bounded retry.
     [ -z "$CONNECT_REASON" ] || fail "Connection failed: $CONNECT_REASON"
     if automatic; then wait_property Connected 8; else wait_property Connected 6; fi

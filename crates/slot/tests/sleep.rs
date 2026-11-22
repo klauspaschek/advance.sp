@@ -295,3 +295,46 @@ fn deep_sleep_wake_reinstalls_the_remapped_shortcut_table() {
         "wake lost the configured MENU+X shortcut"
     );
 }
+
+// Unplugging the TV with the lid shut starts slot again on the handheld's screen: the lid's
+// setting then waits, so the lid can be opened to play on.
+#[test]
+fn a_lid_shut_over_the_tv_waits_ten_seconds_after_the_cable_comes_out() {
+    let (_d, mut a, calls) = setup(false, 0);
+    a.arrive_from_tv();
+    a.apply(Action::LidClose);
+    assert!(!a.suspend_requested(), "slept at once, with no time to open the lid");
+    assert!(a.lid_waiting());
+    a.tick_ms(slot::app::LID_AFTER_TV_MS - 1);
+    assert!(!a.suspend_requested());
+    a.tick_ms(slot::app::LID_AFTER_TV_MS);
+    assert!(a.suspend_requested(), "the lid stayed shut, and its setting never acted");
+    a.suspend_if_requested();
+    assert_eq!(calls.lock().unwrap().len(), 1);
+}
+
+#[test]
+fn opening_the_lid_in_time_plays_on_and_the_next_close_acts_at_once() {
+    let (_d, mut a, calls) = setup(false, 0);
+    a.arrive_from_tv();
+    a.apply(Action::LidClose);
+    a.tick_ms(4_000);
+    a.apply(Action::LidOpen);
+    assert!(!a.lid_waiting());
+    a.tick_ms(20_000);
+    a.suspend_if_requested();
+    assert!(calls.lock().unwrap().is_empty(), "slept after the lid was opened");
+    assert!(matches!(a.phase(), Phase::Shelf));
+    a.apply(Action::LidClose);
+    assert!(a.suspend_requested(), "a later close of the lid waited as well");
+}
+
+#[test]
+fn a_lid_closed_well_after_the_cable_came_out_acts_at_once() {
+    let (_d, mut a, _calls) = setup(false, 0);
+    a.arrive_from_tv();
+    a.tick_ms(6_000);
+    a.apply(Action::LidClose);
+    assert!(a.suspend_requested());
+    assert!(!a.lid_waiting());
+}

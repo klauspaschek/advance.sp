@@ -28,7 +28,7 @@ fn a_cart_gpsp_cannot_link_says_there_is_no_link() {
 fn the_banner_says_what_happened_and_never_what_is_on_screen() {
     let all = Toast::all();
     assert_eq!(
-        all[..33],
+        all[..37],
 
         [
             Toast::BluetoothConnected,
@@ -52,6 +52,10 @@ fn the_banner_says_what_happened_and_never_what_is_on_screen() {
             Toast::ShaderGrid,
             Toast::ShaderDot,
             Toast::ShaderSimpletex,
+            Toast::PictureActual,
+            Toast::PictureStretch,
+            Toast::PictureFit,
+            Toast::PictureInteger,
             Toast::CardUnwritable,
             Toast::DeepSleepWake,
             Toast::SleepUnavailable,
@@ -70,12 +74,12 @@ fn the_banner_says_what_happened_and_never_what_is_on_screen() {
     let palettes = GbColors::all().count();
     assert_eq!(palettes, 49);
     assert_eq!(
-        all[33..33 + palettes],
+        all[37..37 + palettes],
         GbColors::all().map(Toast::Palette).collect::<Vec<_>>()[..],
         "the palette banners do not follow the fixed ones in palette order"
     );
     assert_eq!(
-        all[33 + palettes..],
+        all[37 + palettes..],
 
         QuickRow::ALL
             .into_iter()

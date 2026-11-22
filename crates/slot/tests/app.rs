@@ -2002,6 +2002,7 @@ fn the_picture_mode_is_remembered_per_cart() {
     s.feed([RawEvent::Down(Btn::L1)], 100);
     s.feed([RawEvent::Up(Btn::L1)], 120);
     assert_eq!(video_mode_for(d.path(), "Tetris"), VideoMode::Integer);
+    assert_eq!(s.app().toast(), Some(slot_ui::Toast::PictureInteger), "the size was not named");
     assert_eq!(
         video_mode_for(d.path(), "Zzz"),
         VideoMode::Actual,
@@ -2018,6 +2019,22 @@ fn the_picture_mode_is_remembered_per_cart() {
     s.feed([RawEvent::Down(Btn::R1)], 100);
     assert_eq!(video_mode_for(d.path(), "Tetris"), VideoMode::Actual);
     assert_eq!(s.app().source_rect(), WHOLE_TEXTURE);
+    assert_eq!(s.app().toast(), Some(slot_ui::Toast::PictureActual));
+}
+
+#[test]
+fn a_controllers_right_stick_steps_the_screen_size_and_names_it() {
+    let d = common::tmp_root_with_gb_carts(&["Tetris"]);
+    let mut s = session_playing(d.path());
+    for (larger, want, said) in [
+        (true, VideoMode::Stretch, slot_ui::Toast::PictureStretch),
+        (true, VideoMode::Fit, slot_ui::Toast::PictureFit),
+        (false, VideoMode::Stretch, slot_ui::Toast::PictureStretch),
+    ] {
+        s.pad_picture(larger);
+        assert_eq!(video_mode_for(d.path(), "Tetris"), want);
+        assert_eq!(s.app().toast(), Some(said), "{want:?} was not named on screen");
+    }
 }
 
 #[test]

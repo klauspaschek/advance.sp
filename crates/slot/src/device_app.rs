@@ -150,7 +150,7 @@ pub fn run() {
             // as on a normal end: GL objects first, then the EGL surface and display
             drop(compositor);
             drop(surface);
-            let e = slot::hdmi::relaunch(&root);
+            let e = slot::hdmi::relaunch(&root, on_tv);
             eprintln!("slot: hdmi: could not run the launcher again: {e}");
             return;
         }

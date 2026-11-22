@@ -76,10 +76,10 @@ Connect the RG SP's mini HDMI port to a TV with a mini-HDMI cable or adapter. Pl
 | On the TV | |
 | :--- | :--- |
 | Picture | The TV receives 1080p at 60 Hz. The handheld's 3:2 screen fills the TV's height and is centred, with black bars at the sides. The handheld's own screen is off. |
-| Screen size | Set a game to **Stretch** (right stick, or **Scaling** in the in-game quick menu) to fill the whole 16:9 TV while it plays; every other size keeps the handheld's shape. On the handheld itself, a GBA game fills the screen at every size. |
+| Screen size | Set a game to **Stretch** (right stick, or **Scaling** in the in-game quick menu) to fill the whole 16:9 TV while it plays; every other size keeps the handheld's shape. The right stick names the size on screen as it steps. On the handheld itself, a GBA game fills the screen at every size. |
 | Shader | Turned off on the TV. When you unplug, the handheld gets back the shaders it had before you plugged in, whatever you chose on the TV. |
 | Sound | Plays through the TV, unless Bluetooth or USB headphones already have it. **Sound** gains a **TV (HDMI)** output, so you can switch between the TV and headphones. Headphones that disconnect, or are forgotten, or Bluetooth switched off, give the sound back to the TV. Pulling the cable gives the TV's sound back to the handheld. |
-| Lid | Closing it does not put the handheld to sleep, so you can fold it away and play with a controller. |
+| Lid | Closing it does not put the handheld to sleep, so you can fold it away and play with a controller. If you pull the cable with the lid shut, the lid setting waits 10 seconds: open the lid in that time to play on on the handheld. |
 
 Without a cable nothing changes.
 
