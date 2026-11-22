@@ -23,7 +23,7 @@ First real HDMI test (b6bb09b, 2026-11-22 ~14:47–15:03 UTC): detection, the 10
 - New: shaders off on TV, handheld shaders restored on return (`Config/hdmi-lcd-shaders.txt`, `hdmi::swap_shaders`).
 Card after the test: FAT dirty flag set again (BaseOS power-off appears not to clear it); udisks Check false, but every file reads without error and no FAT errors; detailed fsck needs the user's sudo in a real terminal (`!` can't prompt, udisks OpenForBackup denied).
 Local: slot lib (226), app (80), kid_controls (43), loading_mark (5), slot-gfx lib (14), hdmi/launch/bluetooth shell suites, device `cargo check` pass; one wifi socket test is flaky under parallel load only.
-CI: release run 45038297670 on `1818c735` passed (ARM64 test and package); downloaded to `../builds/advance.sp-hdmi-1818c73/`. Not yet on the card: waiting for the user to approve clearing the dirty flag and copying, and whether to restore a retired Pokémon state.
+CI: release run 45038297670 on `1818c735` passed (ARM64 test and package); downloaded to `../builds/advance.sp-hdmi-1818c73/`. With the user's approval: card repaired via udisks (dirty flag only, re-check clean, no new FSCK file), System copied and every file matches `1818c735`; Pokémon `resume.state` (16:02:48) kept as `resume-replaced-2026-11-22_16-02-48.state` and in `../card-backup-2026-11-22/`, and the 16:01:06 refused state restored as `resume.state`; the in-game .sav (2026-11-20) untouched. Card unmounted. Awaiting the user's second TV test.
 
 ## Cart Studio motion and affordances — 2026-11-07
 
