@@ -305,8 +305,8 @@ fn launch(root: &Path, start: Start) -> Result<Running, &'static str> {
             let ip = start.connection.ip;
             let _ = mdns.disable_interface(mdns_sd::IfKind::All);
             let _ = mdns.enable_interface(mdns_sd::IfKind::Addr(ip.into()));
-            let host = format!("slot-sp-{:08x}.local.", u32::from(ip));
-            let name = format!("slot.sp · {ip}");
+            let host = format!("advance-sp-{:08x}.local.", u32::from(ip));
+            let name = format!("advance.sp · {ip}");
             if let Ok(info) = mdns_sd::ServiceInfo::new(
                 "_smb._tcp.local.",
                 &name,

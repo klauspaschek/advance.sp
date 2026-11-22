@@ -8,7 +8,7 @@ Save separate brightness and screen warmth settings for day and night. Switch wi
 
 Hold <kbd>SELECT</kbd> and press <kbd>X</kbd>. This works on the carousel and during a game, with the default controls outside kid mode.
 
-slot.sp remembers the active preset when you restart. These brightness and warmth presets are independent of **Display & appearance → UI theme**: switching Day/Night does not switch the Light/Dark appearance.
+advance.sp remembers the active preset when you restart. These brightness and warmth presets are independent of **Display & appearance → UI theme**: switching Day/Night does not switch the Light/Dark appearance.
 
 ## Set up each preset
 

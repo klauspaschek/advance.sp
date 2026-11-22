@@ -174,7 +174,7 @@ report() {
             ;;
     esac
     {
-        echo 'slot Bluetooth diagnostic report — v3.1'
+        echo 'advance.sp Bluetooth diagnostic report — v3.1'
         date -u '+UTC: %Y-%m-%d %H:%M:%S'
         echo "Operation: $VERB"
         echo "Stage: $STAGE"

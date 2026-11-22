@@ -905,9 +905,9 @@ impl Menu {
                     else {match self.update_message.as_str() {""=>"","Up to date"=>"Up to date","Available"=>"Available","Cancelled"=>"Cancelled",_=>"Retry"}};
                 let mut rows=vec![("Check for updates".into(),status.into(),false)];
                 for release in &self.releases {
-                    rows.push((if release.kind==Kind::Slot {"slot.sp"}else{"BaseOS"}.into(),release.version.clone(),false));
+                    rows.push((if release.kind==Kind::Slot {"advance.sp"}else{"BaseOS"}.into(),release.version.clone(),false));
                 }
-                rows.push(("Installed slot.sp".into(),crate::build_info::Build::current().version.into(),false));
+                rows.push(("Installed advance.sp".into(),crate::build_info::Build::current().version.into(),false));
                 rows.push(("Installed BaseOS".into(),crate::baseos::var("BASEOS_VERSION").unwrap_or_else(||"Unknown".into()),false));
                 rows.push(("BaseOS check".into(),self.baseos_message.clone(),false));
                 rows

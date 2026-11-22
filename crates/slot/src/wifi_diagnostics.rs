@@ -146,7 +146,7 @@ fn append_probe(report: &mut String, name: &str, probe: &Probe) {
     report.push_str(&format!("{name}_probe={}\n", probe.result));
 }
 fn facts(view: &WifiView, status: &Probe, addr: &Probe, route: &Probe, helper: &Probe) -> String {
-    let mut report = String::from("slot.sp Wi-Fi diagnostics v1\nPrivacy: names, addresses, passwords, tokens and raw logs omitted.\nRead-only local checks; no upload or Internet test.\n");
+    let mut report = String::from("advance.sp Wi-Fi diagnostics v1\nPrivacy: names, addresses, passwords, tokens and raw logs omitted.\nRead-only local checks; no upload or Internet test.\n");
     report.push_str(&format!("launcher_radio_on={}\nlauncher_associated={}\nlauncher_ipv4={}\nlauncher_error_present={}\nlauncher_phase={}\n",
         view.on, view.connected.is_some(), view.ip.as_deref().is_some_and(crate::wifi::usable_ipv4), view.error.is_some(),
         match view.busy { Busy::Idle=>"idle",Busy::Starting=>"starting",Busy::Scanning=>"scanning",Busy::Joining(_)=>"joining",Busy::Addressing=>"getting-address" }));

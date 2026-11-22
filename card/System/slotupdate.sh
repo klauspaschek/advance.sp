@@ -47,7 +47,7 @@ for f in slot launch_frontend.sh mgba_libretro.so gpsp_libretro.so build-info.js
 done
 # Make the complete recovery source durable before replacing installed files.
 sync
-say "UPDATING SLOT.SP"
+say "UPDATING ADVANCE.SP"
 put() {
     # put is called in an OR-list: errexit does not guard commands in here.
     mkdir -p "$(dirname "$SYS/$1")" || return 1

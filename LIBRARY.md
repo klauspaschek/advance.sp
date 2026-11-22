@@ -66,7 +66,7 @@ Labels/GBA/Metroid Fusion.png
 | Game Boy Color | `Labels/GBC/` | 1024 × 914 |
 | Game Boy | `Labels/GB/` | 1024 × 914 |
 
-slot.sp detects rounded label scans with black corners and cleans the background around them automatically. Transparent corners show the cartridge color underneath. Your original PNGs stay unchanged.
+advance.sp detects rounded label scans with black corners and cleans the background around them automatically. Transparent corners show the cartridge color underneath. Your original PNGs stay unchanged.
 
 Restart after adding artwork. **Menu → About**, then <kbd>X</kbd>, restarts the launcher.
 

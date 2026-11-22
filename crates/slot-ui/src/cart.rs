@@ -398,7 +398,7 @@ fn dress(s: &Spec, rgba: &mut [u8]) {
         Mould::Notched => 76,
         Mould::Rounded => 82,
     };
-    stamp_console(rgba, s.w, s.h, "slot.sp", band_bottom);
+    stamp_console(rgba, s.w, s.h, "advance.sp", band_bottom);
 }
 
 fn stamp_console(rgba: &mut [u8], w: u32, h: u32, title: &str, label_top: u32) {

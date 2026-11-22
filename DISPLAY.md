@@ -127,7 +127,7 @@ On a TV (HDMI), **Bezel** chooses from a separate set: 16:9 PNGs in `Bezels/TV/G
 <details>
 <summary><strong>Use a custom startup image</strong></summary>
 
-Place a 24-bit BMP at `Config/bootlogo.bmp`, using the size of your device's startup image. This is the still image shown when the device powers on; **Boot Animation** controls the separate slot.sp animation.
+Place a 24-bit BMP at `Config/bootlogo.bmp`, using the size of your device's startup image. This is the still image shown when the device powers on; **Boot Animation** controls the separate advance.sp animation.
 
 Remove the custom BMP to return to the bundled startup image.
 

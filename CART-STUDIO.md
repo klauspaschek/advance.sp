@@ -18,7 +18,7 @@ Use the D-pad and the button hints to choose a label, shell color, finish or Gam
 
 Colors, finishes, shapes and generated title labels work offline. With Wi-Fi connected, **Label** looks up the game's checksum in the upstream artwork catalog and offers scanned labels or logos when available. Labels that look the same as the current sticker are omitted. After a failed lookup, go back and reopen **Label** to retry. Your ROM stays on the card. A hack or uncommon revision may have no catalog match.
 
-The handheld also fetches cartridge shell logos directly from the original project when Wi-Fi is available and caches them for offline use. Until they are available, shells show the lowercase `slot.sp` wordmark.
+The handheld also fetches cartridge shell logos directly from the original project when Wi-Fi is available and caches them for offline use. Until they are available, shells show the lowercase `advance.sp` wordmark.
 
 Existing custom PNGs on the card remain available. Rounded scan corners are cleaned for the cartridge preview while the original label file stays unchanged.
 
