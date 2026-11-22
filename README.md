@@ -16,6 +16,7 @@
 | :--- | :--- |
 | 🎮 **Bluetooth game controllers**: pair, play, sleep and wake from the controller | ✅ Done, tested on an RG SP with an Xbox Wireless Controller |
 | 📶 **A Bluetooth tile** in the menu: one place for the radio, headphones and controllers | ✅ Done |
+| 🎧 **Headphones that behave**: their volume buttons and slot's stay in step, headphones that connect by themselves take the sound, and volume never jumps loud out of mute | ✅ Done |
 | 📺 **HDMI out** through the RG SP's mini HDMI port: plug in a TV and the picture follows the cable | 🚧 Next, ported from Cartridge |
 
 ### Menu changes from slot.sp
@@ -26,6 +27,13 @@
 - **Device code** can be **No code**: Wi-Fi and RetroAchievements credentials are then saved without a code and open by themselves, with no prompt at startup (anyone holding the SD card could read them). With a code, **Startup access → Ask when needed** no longer asks at startup, only when Network, Wi-Fi, achievements or sharing first need it.
 - **Sound** keeps volume, the output choice (speaker, wired, Bluetooth or USB headphones) and the disconnect options. Headphones are paired in the Bluetooth tile.
 - **Parental controls** (kid mode) are unchanged and now live in **General**.
+
+### Sound and startup changes
+
+- **Headphone volume buttons** now control slot's volume, and slot's volume buttons set the headphones' own level, on headphones that support Bluetooth absolute volume. Muting silences them too, and their buttons work from zero.
+- **Coming out of mute**, volume up starts at the lowest step instead of jumping back to the old level. Toggling mute again without touching the volume restores it as it was.
+- **Headphones you switch on** take the sound as soon as they connect, without choosing them again in Sound.
+- **A new full-screen ADVANCE·SP boot logo**, shrunk to fit on handhelds with smaller screens. Your own `Config/bootlogo.bmp` still takes precedence.
 
 ## Bluetooth controllers
 
@@ -46,7 +54,7 @@ The controller reconnects by itself whenever Bluetooth is on, and can join or le
 | Share, hold | The power button: let go to sleep, keep holding to save and power off |
 | L3 / R3 (sticks pressed in) | Save state / load state (both can be undone from the game menu) |
 | Right stick ← / → | Screen size: the next smaller / larger (Actual, Stretch, Fit, Integer), in any game |
-| Right stick ↑ / ↓ | Volume up / down (held, it repeats like the volume keys) |
+| Right stick ↑ / ↓ | Volume up / down, one step per push: return the stick to the centre before the next |
 
 Turning the controller on while the RG SP is in light sleep wakes the handheld, as a console does. A deep-sleeping or powered-off RG SP can only be woken by its own power button.
 
