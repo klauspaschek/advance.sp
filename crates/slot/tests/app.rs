@@ -2365,3 +2365,31 @@ fn the_shader_shortcut_does_nothing_in_the_save_state_switcher() {
     assert_eq!(slot_store::read_slot_state(d.path()).shader_gba, before);
     assert_eq!(a.toast(), None);
 }
+
+// A TV bezel leaves the game's picture uncovered: the canvas rectangle it is drawn around.
+#[test]
+fn a_tv_bezel_is_drawn_around_the_games_picture_only_while_it_plays() {
+    let d = common::tmp_root_with_gb_carts(&["Tetris"]);
+    std::fs::create_dir_all(d.path().join("Bezels/TV/GB")).unwrap();
+    std::fs::write(d.path().join("Bezels/TV/GB/Brick.png"), b"png").unwrap();
+    let mut state = slot_store::read_slot_state(d.path());
+    state.tv_bezel_gb = slot_store::BezelPick::File("Brick.png".into());
+    slot_store::write_slot_state(d.path(), &state).unwrap();
+    let mut s = session_playing(d.path());
+    assert_eq!(s.app().tv_picture(), None, "on the handheld there is no TV bezel");
+    s.app_mut().set_on_tv(true);
+    assert_eq!(s.app().tv_bezel().as_deref(), Some("Brick.png"));
+    // Actual: the Game Boy picture in the middle of a GBA-sized screen
+    assert_eq!(s.app().tv_picture(), Some([120.0, 24.0, 480.0, 432.0]));
+    s.pad_picture(true);
+    assert_eq!(s.app().tv_picture(), None, "Stretch fills the whole TV: nothing around it");
+    s.pad_picture(true);
+    let fit = s.app().game_destination();
+    assert!(fit.is_some());
+    assert_eq!(s.app().tv_picture(), fit, "Fit's picture is left uncovered");
+    s.app_mut().apply(slot_input::Action::QuickMenu);
+    let later = s.app().now() + 1_000;
+    s.app_mut().tick_ms(later);
+    assert!(s.app().in_game_menu().is_some());
+    assert_eq!(s.app().tv_picture(), None, "the bezel stays off the menus");
+}

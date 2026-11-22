@@ -205,6 +205,18 @@ void main() {
 }
 "#;
 
+/// A picture with its own transparency, over what is drawn already: a TV bezel.
+pub const OVERLAY_FRAG: &str = r#"
+precision mediump float;
+uniform sampler2D u_tex;
+uniform vec3 u_gain;
+varying vec2 v_uv;
+void main() {
+    vec4 c = texture2D(u_tex, v_uv);
+    FRAG_COLOR = vec4(c.rgb * u_gain, c.a);
+}
+"#;
+
 pub const BLIT_FRAG: &str = r#"
 precision mediump float;
 uniform sampler2D u_tex;
