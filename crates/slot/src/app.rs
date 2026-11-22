@@ -1271,7 +1271,7 @@ impl App {
     }
 
     pub fn in_game_hidden(&self) -> Vec<QuickRow> {
-        let no_bezel = self.playing_platform() == Platform::Gba && !self.framed_panel();
+        let no_bezel = self.playing_platform() == Platform::Gba && !self.framed_panel() && !self.on_tv;
         let mut hidden = vec![QuickRow::CartStudio];
         if self.hidden_rows().contains(&QuickRow::WallpaperTint){hidden.push(QuickRow::WallpaperTint);}
         if self.link_active() { hidden.push(QuickRow::FrameBlending); }
@@ -1585,6 +1585,10 @@ impl App {
     }
 
     pub fn bezel_files(&self, platform: Platform) -> Vec<String> {
+        // on a TV the Bezel setting chooses the TV's own, kept apart from the handheld's
+        if self.on_tv {
+            return self.root().map(|root| crate::bezel::tv_list(root, platform)).unwrap_or_default();
+        }
         match platform == Platform::Gba && !self.framed_panel() {
             true => Vec::new(),
             false => self
@@ -1607,18 +1611,24 @@ impl App {
     }
 
     fn bezel_pick(&mut self, platform: Platform) -> &mut BezelPick {
-        match platform {
-            Platform::Gba => &mut self.state.bezel_gba,
-            Platform::Gb => &mut self.state.bezel_gb,
-            Platform::Gbc => &mut self.state.bezel_gbc,
+        match (self.on_tv, platform) {
+            (true, Platform::Gba) => &mut self.state.tv_bezel_gba,
+            (true, Platform::Gb) => &mut self.state.tv_bezel_gb,
+            (true, Platform::Gbc) => &mut self.state.tv_bezel_gbc,
+            (false, Platform::Gba) => &mut self.state.bezel_gba,
+            (false, Platform::Gb) => &mut self.state.bezel_gb,
+            (false, Platform::Gbc) => &mut self.state.bezel_gbc,
         }
     }
 
     pub fn resolved_bezel(&self, platform: Platform) -> BezelPick {
-        let pick = match platform {
-            Platform::Gba => &self.state.bezel_gba,
-            Platform::Gb => &self.state.bezel_gb,
-            Platform::Gbc => &self.state.bezel_gbc,
+        let pick = match (self.on_tv, platform) {
+            (true, Platform::Gba) => &self.state.tv_bezel_gba,
+            (true, Platform::Gb) => &self.state.tv_bezel_gb,
+            (true, Platform::Gbc) => &self.state.tv_bezel_gbc,
+            (false, Platform::Gba) => &self.state.bezel_gba,
+            (false, Platform::Gb) => &self.state.bezel_gb,
+            (false, Platform::Gbc) => &self.state.bezel_gbc,
         };
         match self.bezel_choices(platform).contains(pick) {
             true => pick.clone(),
@@ -1645,6 +1655,45 @@ impl App {
 
     pub fn set_game_bezel(&mut self, tex: Option<TexId>) {
         self.game_bezel = tex;
+    }
+
+    /// On a TV, the file in `Bezels/TV/<system>/` chosen for the game playing.
+    pub fn tv_bezel(&self) -> Option<String> {
+        if !self.on_tv {
+            return None;
+        }
+        match self.resolved_bezel(self.playing_platform()) {
+            BezelPick::File(name) => Some(name),
+            _ => None,
+        }
+    }
+
+    /// Where the game's picture is on the canvas while a TV bezel shows around it: the bezel
+    /// covers the rest of the TV, never the picture. `None` while no TV bezel shows: in menus,
+    /// with none chosen, or with the game stretched across the whole TV.
+    pub fn tv_picture(&self) -> Option<[f32; 4]> {
+        if self.tv_bezel().is_none()
+            || !matches!(self.phase, Phase::Playing { .. })
+            || !self.shows_game()
+            || self.tv_fills_screen()
+        {
+            return None;
+        }
+        if let Some(rect) = self.game_destination() {
+            return Some(rect);
+        }
+        // Actual: a Game Boy picture sits in the middle of a GBA-sized screen
+        let (w, h) = self.playing_platform().picture();
+        let (sx, sy) = (
+            OUT_W as f32 / slot_gfx::SRC_W as f32,
+            OUT_H as f32 / slot_gfx::SRC_H as f32,
+        );
+        Some([
+            slot_gfx::SRC_W.saturating_sub(w) as f32 / 2.0 * sx,
+            slot_gfx::SRC_H.saturating_sub(h) as f32 / 2.0 * sy,
+            w.min(slot_gfx::SRC_W) as f32 * sx,
+            h.min(slot_gfx::SRC_H) as f32 * sy,
+        ])
     }
 
     pub fn shown_game_bezel(&self) -> Option<TexId> {
@@ -1909,7 +1958,8 @@ impl App {
         if !own {
             hidden.push(QuickRow::WallpaperTint);
         }
-        if !self.framed_panel() {
+        // a GBA game fills the handheld's 3:2 screen: a frame shows only on 4:3, or on a TV
+        if !self.framed_panel() && !self.on_tv {
             hidden.push(QuickRow::GbaBezel);
         }
         if !self.left_stick {
@@ -2737,6 +2787,11 @@ impl App {
 
     pub fn set_left_stick(&mut self, present: bool) {
         self.left_stick = present;
+    }
+
+    /// Shows slot as on a TV, or on the handheld (set at start from the HDMI output; for tests).
+    pub fn set_on_tv(&mut self, on: bool) {
+        self.on_tv = on;
     }
 
     /// Whether slot is showing on a TV through HDMI.

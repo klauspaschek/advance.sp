@@ -5,8 +5,20 @@ use slot_store::Platform;
 pub const BEZELS: &str = "System/bezels";
 pub const GAME_BEZELS: &str = "Bezels";
 
+/// The TV's bezels (HDMI), one folder per system below it: 16:9 PNGs drawn across the whole TV
+/// around the game, never over the game's picture.
+pub const TV_BEZELS: &str = "Bezels/TV";
+
 pub fn list(root: &Path, platform: Platform) -> Vec<String> {
-    let dir = root.join(GAME_BEZELS).join(platform.dir_name());
+    pngs(&root.join(GAME_BEZELS).join(platform.dir_name()))
+}
+
+/// The TV bezels for `platform`, by name.
+pub fn tv_list(root: &Path, platform: Platform) -> Vec<String> {
+    pngs(&root.join(TV_BEZELS).join(platform.dir_name()))
+}
+
+fn pngs(dir: &Path) -> Vec<String> {
     let mut files: Vec<String> = std::fs::read_dir(dir)
         .ok()
         .into_iter()
