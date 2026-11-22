@@ -23,6 +23,7 @@ First real HDMI test (b6bb09b, 2026-11-22 ~14:47–15:03 UTC): detection, the 10
 - New: shaders off on TV, handheld shaders restored on return (`Config/hdmi-lcd-shaders.txt`, `hdmi::swap_shaders`).
 Card after the test: FAT dirty flag set again (BaseOS power-off appears not to clear it); udisks Check false, but every file reads without error and no FAT errors; detailed fsck needs the user's sudo in a real terminal (`!` can't prompt, udisks OpenForBackup denied).
 Local: slot lib (226), app (80), kid_controls (43), loading_mark (5), slot-gfx lib (14), hdmi/launch/bluetooth shell suites, device `cargo check` pass; one wifi socket test is flaky under parallel load only.
+CI: release run 45038297670 on `1818c735` passed (ARM64 test and package); downloaded to `../builds/advance.sp-hdmi-1818c73/`. Not yet on the card: waiting for the user to approve clearing the dirty flag and copying, and whether to restore a retired Pokémon state.
 
 ## Cart Studio motion and affordances — 2026-11-07
 
