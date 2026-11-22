@@ -228,6 +228,31 @@ esac
         self.assertEqual((self.root / 'route').read_text().strip(), '')
         self.assertEqual((self.root / 'Config/bluetooth-headphones').read_text().strip(), MAC)
 
+    def test_on_a_tv_disconnected_headphones_give_the_sound_to_the_tv(self):
+        disp = self.root / 'disp'
+        disp.write_text('hdmi output mode(10)\n')
+        self.env['SLOT_HDMI_DISP'] = str(disp)
+        self.assertEqual(self.run_command('connect', MAC).returncode, 0)
+        self.env['MOCK_CONNECTED'] = 'no'
+        self.assertEqual(self.run_command('fallback', MAC).returncode, 0)
+        self.assertEqual((self.root / 'route').read_text().strip(), 'plughw:CARD=ahubhdmi,DEV=0')
+        # Bluetooth switched off on the TV leaves the sound on the TV too
+        self.env.pop('MOCK_CONNECTED')
+        self.assertEqual(self.run_command('connect', MAC).returncode, 0)
+        result = self.run_command('off')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.root / 'route').read_text().strip(), 'plughw:CARD=ahubhdmi,DEV=0')
+        self.assertIn('OUTPUT plughw:CARD=ahubhdmi,DEV=0', result.stdout)
+        # on the handheld's own screen they fall back to its speaker, as before
+        disp.write_text('lcd output\n')
+        result = self.run_command('on')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        result = self.run_command('connect', MAC)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.env['MOCK_CONNECTED'] = 'no'
+        self.assertEqual(self.run_command('fallback', MAC).returncode, 0)
+        self.assertEqual((self.root / 'route').read_text().strip(), '')
+
     def test_stale_disconnect_cannot_replace_a_new_output_or_reconnected_device(self):
         self.assertEqual(self.run_command('connect', MAC).returncode, 0)
         route = (self.root / 'route').read_text()
@@ -281,7 +306,9 @@ esac
         # out of their case, headphones connect themselves; BlueZ refuses a second connect
         (self.root / 'Config').mkdir()
         (self.root / 'Config/bluetooth-headphones').write_text(MAC)
-        for reason in ['org.bluez.Error.AlreadyConnected', 'org.bluez.Error.InProgress']:
+        for reason in ['org.bluez.Error.AlreadyConnected', 'org.bluez.Error.InProgress',
+                       # as BlueZ 5.66 on the RG SP says it
+                       'org.bluez.Error.Failed Operation already in progress']:
             (self.root / 'route').unlink(missing_ok=True)
             self.env['MOCK_CONNECT_ERROR'] = reason
             result = self.run_command('reconnect')
@@ -827,6 +854,17 @@ esac
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual((self.root / 'calls').read_text().count('session pair ' + MAC), 3)
         self.assertFalse((self.root / 'Config/bluetooth-pads').exists())
+
+    def test_speaker_hdmi_routes_the_sound_to_the_tv(self):
+        self.assertEqual(self.run_command('connect', MAC).returncode, 0)
+        result = self.run_command('speaker', 'hdmi')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.root / 'route').read_text().strip(), 'plughw:CARD=ahubhdmi,DEV=0')
+        self.assertFalse((self.root / 'Config/bluetooth-headphones').exists())
+        self.assertIn('OUTPUT plughw:CARD=ahubhdmi,DEV=0', result.stdout)
+
+    def test_speaker_refuses_any_other_target(self):
+        self.assertNotEqual(self.run_command('speaker', 'plughw:CARD=x,DEV=0').returncode, 0)
 
 if __name__ == '__main__':
     unittest.main()

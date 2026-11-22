@@ -49,6 +49,11 @@ struct BindCapture {
 }
 
 pub const INSERT_S: f32 = 0.73;
+/// How long a lid shut over the TV waits once the cable is out, for the hand to open it and play
+/// on: unplugging comes first, then opening.
+pub const LID_AFTER_TV_MS: Millis = 10_000;
+/// How soon after starting again a shut lid still counts as the one closed over the TV.
+const LID_FROM_TV_MS: Millis = 5_000;
 const INSERT_HOLD_S: f32 = 0.28;
 
 pub const SEATED_AT: f32 = INSERT_S - INSERT_HOLD_S;
@@ -355,6 +360,13 @@ pub struct App {
     pub bluetooth: Option<crate::bluetooth::Manager>,
     bluetooth_supported: bool,
     pad_faces_by_position: bool,
+    /// The HDMI transmitter has the output (checked at start: the cable restarts slot).
+    on_tv: bool,
+    /// Started again because the TV's cable went out: until then, a lid found shut is the one
+    /// closed over the TV, and waits [`LID_AFTER_TV_MS`] instead of acting at once.
+    left_tv_until: Option<Millis>,
+    /// A lid shut over the unplugged TV acts at this time, unless it opens first.
+    lid_wait: Option<Millis>,
     /// A Bluetooth (or USB) controller is connected now.
     controllers: bool,
     pub(crate) kid_status_icon: Option<TexId>,
@@ -645,6 +657,9 @@ impl App {
             bluetooth: None,
             bluetooth_supported: false,
             pad_faces_by_position: true,
+            on_tv: false,
+            left_tv_until: None,
+            lid_wait: None,
             controllers: false,
             kid_status_icon: None,
             ra_sync_indicator: None,
@@ -891,6 +906,17 @@ impl App {
         (app.state.brightness, app.state.blue_light) = app.display_settings.current();
         app.power_settings = crate::power_settings::PowerSettings::read(root);
         app.pad_faces_by_position = crate::bluetooth::pad_faces_by_position(root);
+        app.on_tv = crate::hdmi::active();
+        // the TV shows the game without a shader; the handheld gets its own back
+        if crate::hdmi::swap_shaders(root, &mut app.state, app.on_tv) {
+            app.persist();
+        }
+        if !app.on_tv {
+            crate::hdmi::forget_kept_shaders(root);
+            if crate::hdmi::left_tv() {
+                app.arrive_from_tv();
+            }
+        }
         for p in Platform::ALL { app.frame_blending[p as usize]=crate::frame_blending::read(root,p); }
         app.carousel = read_carousel(root);
         app.shortcuts = read_shortcuts(root);
@@ -1245,7 +1271,7 @@ impl App {
     }
 
     pub fn in_game_hidden(&self) -> Vec<QuickRow> {
-        let no_bezel = self.playing_platform() == Platform::Gba && !self.framed_panel();
+        let no_bezel = self.playing_platform() == Platform::Gba && !self.framed_panel() && !self.on_tv;
         let mut hidden = vec![QuickRow::CartStudio];
         if self.hidden_rows().contains(&QuickRow::WallpaperTint){hidden.push(QuickRow::WallpaperTint);}
         if self.link_active() { hidden.push(QuickRow::FrameBlending); }
@@ -1559,6 +1585,10 @@ impl App {
     }
 
     pub fn bezel_files(&self, platform: Platform) -> Vec<String> {
+        // on a TV the Bezel setting chooses the TV's own, kept apart from the handheld's
+        if self.on_tv {
+            return self.root().map(|root| crate::bezel::tv_list(root, platform)).unwrap_or_default();
+        }
         match platform == Platform::Gba && !self.framed_panel() {
             true => Vec::new(),
             false => self
@@ -1581,18 +1611,24 @@ impl App {
     }
 
     fn bezel_pick(&mut self, platform: Platform) -> &mut BezelPick {
-        match platform {
-            Platform::Gba => &mut self.state.bezel_gba,
-            Platform::Gb => &mut self.state.bezel_gb,
-            Platform::Gbc => &mut self.state.bezel_gbc,
+        match (self.on_tv, platform) {
+            (true, Platform::Gba) => &mut self.state.tv_bezel_gba,
+            (true, Platform::Gb) => &mut self.state.tv_bezel_gb,
+            (true, Platform::Gbc) => &mut self.state.tv_bezel_gbc,
+            (false, Platform::Gba) => &mut self.state.bezel_gba,
+            (false, Platform::Gb) => &mut self.state.bezel_gb,
+            (false, Platform::Gbc) => &mut self.state.bezel_gbc,
         }
     }
 
     pub fn resolved_bezel(&self, platform: Platform) -> BezelPick {
-        let pick = match platform {
-            Platform::Gba => &self.state.bezel_gba,
-            Platform::Gb => &self.state.bezel_gb,
-            Platform::Gbc => &self.state.bezel_gbc,
+        let pick = match (self.on_tv, platform) {
+            (true, Platform::Gba) => &self.state.tv_bezel_gba,
+            (true, Platform::Gb) => &self.state.tv_bezel_gb,
+            (true, Platform::Gbc) => &self.state.tv_bezel_gbc,
+            (false, Platform::Gba) => &self.state.bezel_gba,
+            (false, Platform::Gb) => &self.state.bezel_gb,
+            (false, Platform::Gbc) => &self.state.bezel_gbc,
         };
         match self.bezel_choices(platform).contains(pick) {
             true => pick.clone(),
@@ -1619,6 +1655,45 @@ impl App {
 
     pub fn set_game_bezel(&mut self, tex: Option<TexId>) {
         self.game_bezel = tex;
+    }
+
+    /// On a TV, the file in `Bezels/TV/<system>/` chosen for the game playing.
+    pub fn tv_bezel(&self) -> Option<String> {
+        if !self.on_tv {
+            return None;
+        }
+        match self.resolved_bezel(self.playing_platform()) {
+            BezelPick::File(name) => Some(name),
+            _ => None,
+        }
+    }
+
+    /// Where the game's picture is on the canvas while a TV bezel shows around it: the bezel
+    /// covers the rest of the TV, never the picture. `None` while no TV bezel shows: in menus,
+    /// with none chosen, or with the game stretched across the whole TV.
+    pub fn tv_picture(&self) -> Option<[f32; 4]> {
+        if self.tv_bezel().is_none()
+            || !matches!(self.phase, Phase::Playing { .. })
+            || !self.shows_game()
+            || self.tv_fills_screen()
+        {
+            return None;
+        }
+        if let Some(rect) = self.game_destination() {
+            return Some(rect);
+        }
+        // Actual: a Game Boy picture sits in the middle of a GBA-sized screen
+        let (w, h) = self.playing_platform().picture();
+        let (sx, sy) = (
+            OUT_W as f32 / slot_gfx::SRC_W as f32,
+            OUT_H as f32 / slot_gfx::SRC_H as f32,
+        );
+        Some([
+            slot_gfx::SRC_W.saturating_sub(w) as f32 / 2.0 * sx,
+            slot_gfx::SRC_H.saturating_sub(h) as f32 / 2.0 * sy,
+            w.min(slot_gfx::SRC_W) as f32 * sx,
+            h.min(slot_gfx::SRC_H) as f32 * sy,
+        ])
     }
 
     pub fn shown_game_bezel(&self) -> Option<TexId> {
@@ -1883,7 +1958,8 @@ impl App {
         if !own {
             hidden.push(QuickRow::WallpaperTint);
         }
-        if !self.framed_panel() {
+        // a GBA game fills the handheld's 3:2 screen: a frame shows only on 4:3, or on a TV
+        if !self.framed_panel() && !self.on_tv {
             hidden.push(QuickRow::GbaBezel);
         }
         if !self.left_stick {
@@ -2474,8 +2550,20 @@ impl App {
     /// as L1 and R1 step it in a Game Boy game: a controller's right stick does it in any game.
     pub fn step_picture(&mut self, larger: bool) {
         if matches!(self.phase, Phase::Playing { .. }) && self.in_game_menu().is_none() {
-            self.set_picture(self.video_mode.step(larger));
+            self.say_picture(self.video_mode.step(larger));
         }
+    }
+
+    /// A shortcut changed the screen size: with no menu showing the value, name it.
+    fn say_picture(&mut self, mode: VideoMode) {
+        self.set_picture(mode);
+        let said = match self.video_mode {
+            VideoMode::Actual => Toast::PictureActual,
+            VideoMode::Stretch => Toast::PictureStretch,
+            VideoMode::Fit => Toast::PictureFit,
+            VideoMode::Integer => Toast::PictureInteger,
+        };
+        self.hud.toast(said, self.now());
     }
 
     fn set_picture(&mut self, mode: VideoMode) {
@@ -2699,6 +2787,56 @@ impl App {
 
     pub fn set_left_stick(&mut self, present: bool) {
         self.left_stick = present;
+    }
+
+    /// Shows slot as on a TV, or on the handheld (set at start from the HDMI output; for tests).
+    pub fn set_on_tv(&mut self, on: bool) {
+        self.on_tv = on;
+    }
+
+    /// Whether slot is showing on a TV through HDMI.
+    pub fn on_tv(&self) -> bool {
+        self.on_tv
+    }
+
+    /// On a TV, a game set to Stretch fills the TV's 16:9; everything else keeps the
+    /// handheld's 3:2 shape in the middle.
+    pub fn tv_fills_screen(&self) -> bool {
+        self.on_tv
+            && matches!(self.phase, Phase::Playing { .. })
+            && self.video_mode == VideoMode::Stretch
+    }
+
+    /// This slot was started again because the TV's cable went out: a lid still shut over it
+    /// waits [`LID_AFTER_TV_MS`] before sleep or power off, so it can be opened to play on.
+    pub fn arrive_from_tv(&mut self) {
+        self.left_tv_until = Some(self.now() + LID_FROM_TV_MS);
+    }
+
+    /// The closed lid is waiting for the hand to open it after the TV was unplugged.
+    pub fn lid_waiting(&self) -> bool {
+        self.lid_wait.is_some()
+    }
+
+    /// A cable went into the HDMI port or out of it: the game is saved where it stands, so that
+    /// slot can end and BaseOS start it again on the other output, back in the same game.
+    /// Returns false while that would cut a link session short, or while slot is already
+    /// shutting down; the watcher asks again a second later.
+    pub fn leave_for_cable(&mut self) -> bool {
+        if self.link_active() || self.shutting_down() {
+            return false;
+        }
+        eprintln!("slot: hdmi: the cable changed, starting again on the other output");
+        if let Some(menu) = &mut self.network { menu.set_sharing_allowed(false); }
+        self.close_game_menu();
+        self.remember_shelf();
+        self.flush_resume();
+        self.settle_saves();
+        self.persist();
+        // a restart for the cable is no crash: a game in its first seconds must not come back
+        // on the shelf with its resume state put aside
+        self.clear_loading_mark();
+        true
     }
 
     /// Whether Bluetooth is switched on (checked once a second: it is a file on the card).
@@ -3149,7 +3287,11 @@ impl App {
         self.track_held_dir(action);
         match action {
             Action::LidClose => return self.lid_close(),
-            Action::LidOpen => return self.wake(),
+            Action::LidOpen => {
+                self.left_tv_until = None;
+                self.lid_wait = None;
+                return self.wake();
+            }
             Action::PowerPress => {
                 if self.link_active() {
                     self.end_link();
@@ -3340,12 +3482,12 @@ impl App {
                 Action::GbaDown(Btn::L1)
                     if self.slot_owns_the_shoulders() && !self.bound_to_game(Btn::L1) =>
                 {
-                    self.set_picture(self.video_mode.step(false))
+                    self.say_picture(self.video_mode.step(false))
                 }
                 Action::GbaDown(Btn::R1)
                     if self.slot_owns_the_shoulders() && !self.bound_to_game(Btn::R1) =>
                 {
-                    self.set_picture(self.video_mode.step(true))
+                    self.say_picture(self.video_mode.step(true))
                 }
                 Action::Eject => self.eject(),
                 Action::GameMenu => self.game_menu_shortcut(),
@@ -3565,6 +3707,7 @@ impl App {
                         crate::bluetooth::Manager::new(root.clone(), self.bluetooth_supported)
                     };
                     menu.wired = self.headphones;
+                    menu.tv = self.on_tv;
                     menu.carousel_sounds = self.state.carousel_sounds;
                     self.bluetooth = Some(menu);
                 }
@@ -4731,6 +4874,13 @@ impl App {
     }
 
     fn timers(&mut self) {
+        // the lid stayed shut after the TV was unplugged: now it acts as set
+        if self.lid_wait.is_some_and(|at| self.now() >= at) {
+            self.lid_wait = None;
+            if !self.shutting_down() {
+                self.close_lid_now();
+            }
+        }
         #[cfg(feature = "device")]
         if let Some(root) = self.root.as_deref() {
             let online = !self.kids.active && !self.shutting_down() && !self.link_active()
@@ -6749,6 +6899,22 @@ impl App {
     }
 
     fn lid_close(&mut self) {
+        // on the TV the lid is shut to get it out of the way: keep playing
+        if self.on_tv {
+            return;
+        }
+        // the TV was unplugged with the lid shut: time to open it and play on
+        let now = self.now();
+        if self.left_tv_until.take().is_some_and(|until| now <= until) {
+            self.lid_wait = Some(now + LID_AFTER_TV_MS);
+            return;
+        }
+        self.lid_wait = None;
+        self.close_lid_now();
+    }
+
+    /// The lid's own setting: sleep, deep sleep or power off.
+    fn close_lid_now(&mut self) {
         match self.power_settings.lid_close {
             2 => {
                 self.flush_resume();

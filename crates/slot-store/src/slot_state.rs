@@ -249,6 +249,10 @@ pub struct SlotState {
     pub bezel_gba: BezelPick,
     pub bezel_gb: BezelPick,
     pub bezel_gbc: BezelPick,
+    /// The bezels on a TV (HDMI), from `Bezels/TV/<system>/`: chosen apart from the handheld's.
+    pub tv_bezel_gba: BezelPick,
+    pub tv_bezel_gb: BezelPick,
+    pub tv_bezel_gbc: BezelPick,
     pub recents: Vec<Recent>,
     pub favorites: Vec<Recent>,
     pub shelf: Option<String>,
@@ -402,6 +406,9 @@ impl Default for SlotState {
             bezel_gba: BezelPick::Ags102,
             bezel_gb: BezelPick::Ags102,
             bezel_gbc: BezelPick::Ags102,
+            tv_bezel_gba: BezelPick::None,
+            tv_bezel_gb: BezelPick::None,
+            tv_bezel_gbc: BezelPick::None,
             recents: Vec::new(),
             favorites: Vec::new(),
             shelf: None,
@@ -510,6 +517,9 @@ pub fn write_slot_state(root: &Path, s: &SlotState) -> std::io::Result<()> {
     text.push_str(&format!("bezel_gba={}\n", s.bezel_gba.key()));
     text.push_str(&format!("bezel_gb={}\n", s.bezel_gb.key()));
     text.push_str(&format!("bezel_gbc={}\n", s.bezel_gbc.key()));
+    text.push_str(&format!("tv_bezel_gba={}\n", s.tv_bezel_gba.key()));
+    text.push_str(&format!("tv_bezel_gb={}\n", s.tv_bezel_gb.key()));
+    text.push_str(&format!("tv_bezel_gbc={}\n", s.tv_bezel_gbc.key()));
     text.push_str(&format!("shelf={}\n", s.shelf.as_deref().unwrap_or("")));
     text.push_str(&format!(
         "shelf_cart={}\n",
@@ -574,6 +584,9 @@ fn parse(text: &str) -> Option<SlotState> {
     let mut bezel_gba = None;
     let mut bezel_gb = None;
     let mut bezel_gbc = None;
+    let mut tv_bezel_gba = None;
+    let mut tv_bezel_gb = None;
+    let mut tv_bezel_gbc = None;
     let mut shelf = None;
     let mut shelf_cart = None;
     for line in text.lines().filter(|l| !l.is_empty()) {
@@ -633,6 +646,9 @@ fn parse(text: &str) -> Option<SlotState> {
             "bezel_gba" => bezel_gba = Some(BezelPick::parse(value)),
             "bezel_gb" => bezel_gb = Some(BezelPick::parse(value)),
             "bezel_gbc" => bezel_gbc = Some(BezelPick::parse(value)),
+            "tv_bezel_gba" => tv_bezel_gba = Some(BezelPick::parse(value)),
+            "tv_bezel_gb" => tv_bezel_gb = Some(BezelPick::parse(value)),
+            "tv_bezel_gbc" => tv_bezel_gbc = Some(BezelPick::parse(value)),
             "shelf" => shelf = Some(value.to_string()).filter(|v| !v.is_empty()),
             "shelf_cart" => shelf_cart = recent_value(value),
             "shader_gb" => shader_gb = Shader::parse(value).filter(|s| Shader::GB.contains(s)),
@@ -697,6 +713,9 @@ fn parse(text: &str) -> Option<SlotState> {
         bezel_gba: bezel_gba.unwrap_or(fallback.bezel_gba),
         bezel_gb: bezel_gb.unwrap_or(fallback.bezel_gb),
         bezel_gbc: bezel_gbc.unwrap_or(fallback.bezel_gbc),
+        tv_bezel_gba: tv_bezel_gba.unwrap_or(fallback.tv_bezel_gba),
+        tv_bezel_gb: tv_bezel_gb.unwrap_or(fallback.tv_bezel_gb),
+        tv_bezel_gbc: tv_bezel_gbc.unwrap_or(fallback.tv_bezel_gbc),
         recents: Vec::new(),
         favorites: Vec::new(),
         shelf,

@@ -138,6 +138,8 @@ struct QuickPalette {
 struct BezelSync {
     tex: Option<TexId>,
     image: Option<(Console, BezelPick, (u32, u32))>,
+    /// The TV bezel uploaded to the compositor: system, file and the TV framebuffer's size.
+    tv: Option<(Console, String, (u32, u32))>,
     labels: [String; 3],
     faces: [(Option<TexId>, Option<TexId>); 3],
 }
@@ -1137,6 +1139,16 @@ impl Frontend {
         self.session.pad_action(action);
     }
 
+    /// The HDMI cable changed: saves the game and stops the sound, and says whether slot may
+    /// now end to start again on the other output.
+    pub fn leave_for_cable(&mut self) -> bool {
+        if !self.session.app_mut().leave_for_cable() {
+            return false;
+        }
+        self.session.prepare_poweroff();
+        true
+    }
+
     /// Whether a controller is connected and whether it pressed last.
     pub fn set_controllers(&mut self, connected: bool, pressed_last: bool) {
         self.session.app_mut().set_controllers(connected, pressed_last);
@@ -1650,6 +1662,32 @@ fn sync_clock(app: &mut App, compositor: &mut Compositor, clocks: &mut Clocks,he
     }
 }
 
+/// The TV bezel chosen for the game playing, read once per choice at the TV framebuffer's size,
+/// and where the game's picture is, left uncovered.
+fn sync_tv_bezel(app: &App, compositor: &mut Compositor, state: &mut BezelSync) {
+    let wanted = app
+        .tv_bezel()
+        .zip(compositor.surface())
+        .map(|(name, size)| (app.playing_platform(), name, size));
+    if state.tv != wanted {
+        let image = wanted.as_ref().and_then(|(platform, name, (w, h))| {
+            let path = app
+                .root()?
+                .join(crate::bezel::TV_BEZELS)
+                .join(platform.dir_name())
+                .join(name);
+            let rgba = slot_ui::bezel_face(&path, *w, *h);
+            if rgba.is_none() {
+                eprintln!("slot: tv bezel: could not read {}", path.display());
+            }
+            rgba.map(|rgba| (*w, *h, rgba))
+        });
+        compositor.set_tv_bezel(image.as_ref().map(|(w, h, rgba)| (*w, *h, rgba.as_slice())));
+        state.tv = wanted;
+    }
+    compositor.set_tv_picture(app.tv_picture());
+}
+
 fn sync_game_bezel(app: &mut App, compositor: &mut Compositor, state: &mut BezelSync) {
     let platform = app.playing_platform();
     let pick = app.resolved_bezel(platform);
@@ -1659,6 +1697,8 @@ fn sync_game_bezel(app: &mut App, compositor: &mut Compositor, state: &mut Bezel
         let rgba = match &shown.1 {
             BezelPick::None | BezelPick::Ags102 => None,
             BezelPick::Default => default_game_bezel_face(platform == Console::Gbc, w, h),
+            // on a TV, a file is the TV's bezel, drawn by the compositor around the canvas
+            BezelPick::File(_) if app.on_tv() => None,
             BezelPick::File(name) => app
                 .root()
                 .map(|root| {
@@ -1682,6 +1722,7 @@ fn sync_game_bezel(app: &mut App, compositor: &mut Compositor, state: &mut Bezel
         app.set_game_bezel(tex);
         state.image = Some(shown);
     }
+    sync_tv_bezel(app, compositor, state);
     if app.quick_menu().is_none() && app.in_game_menu().is_none() {
         return;
     }

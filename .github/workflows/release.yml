@@ -116,6 +116,7 @@ jobs:
           python3 card/test-ota-recovery.py
           sh card/test-update.sh
           sh card/test-launch.sh
+          sh card/test-hdmi.sh
 
       - uses: actions/upload-artifact@v7
         with:
@@ -196,7 +197,7 @@ jobs:
 
           ## advance.sp
 
-          slot.sp for the RG SP, extended with Bluetooth game controllers (pairing, a Nintendo or Xbox face-button layout, screenshot, save/load state, volume and screen-size shortcuts on the extra buttons, a button checker, and waking from light sleep), a Bluetooth tile for the radio, headphones and controllers, headphone volume buttons that stay in step with the handheld, and a new boot logo. HDMI output is next. See the [README](https://github.com/klauspaschek/advance.sp#readme) for details.
+          slot.sp for the RG SP, extended with Bluetooth game controllers (pairing, a Nintendo or Xbox face-button layout, screenshot, save/load state, volume and screen-size shortcuts on the extra buttons, a button checker, and waking from light sleep), a Bluetooth tile for the radio, headphones and controllers, headphone volume buttons that stay in step with the handheld, a new boot logo, and HDMI output to a TV through the mini HDMI port (the picture and sound follow the cable mid-game; with the TV's sound, optional TV bezels from your card, and the shader off on the TV). See the [README](https://github.com/klauspaschek/advance.sp#readme) for details.
 
           Built and regression-tested on ARM64; slot, mGBA and gpSP are verified AArch64 binaries. Tested on an RG SP; other handhelds slot.sp supports are untested.
 

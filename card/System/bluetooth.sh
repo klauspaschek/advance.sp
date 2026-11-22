@@ -132,6 +132,13 @@ bt() {
     log "exit=$rc"
     return "$rc"
 }
+# Where the sound goes when no headphones have it: the TV's speakers while HDMI has the picture,
+# else the handheld's own (an empty route).
+default_route() {
+    if grep -q 'hdmi output' "${SLOT_HDMI_DISP:-/sys/class/disp/disp/attr/sys}" 2>/dev/null; then
+        echo 'plughw:CARD=ahubhdmi,DEV=0'
+    fi
+}
 route() {
     mkdir -p "$(dirname "$ROUTE")"
     printf '%s\n' "$1" > "$ROUTE.$$"
@@ -573,11 +580,11 @@ connect() {
     # Headphones taken out of their case connect by themselves: BlueZ then says they are
     # connected already, or still connecting, instead of connecting them. That is no failure:
     # whether the link and its audio are ready is checked below, as after any connect.
-    case $CONNECT_REASON in
-        *AlreadyConnected*|*InProgress*|*'In Progress'*)
-            log "The headphones are connecting by themselves ($CONNECT_REASON)"
-            CONNECT_REASON='' ;;
-    esac
+    # BlueZ 5.66 also says "org.bluez.Error.Failed Operation already in progress".
+    if printf '%s\n' "$CONNECT_REASON" | grep -Eqi 'AlreadyConnected|in ?progress'; then
+        log "The headphones are connecting by themselves ($CONNECT_REASON)"
+        CONNECT_REASON=''
+    fi
     # An explicit Connect rejection is final after the bounded retry.
     [ -z "$CONNECT_REASON" ] || fail "Connection failed: $CONNECT_REASON"
     if automatic; then wait_property Connected 8; else wait_property Connected 6; fi
@@ -695,6 +702,7 @@ automatic && { [ ! -f "$PREF" ] || [ -f "$OFF" ]; } && { rm -f "$SESSION_LOG"; e
 # Read-only operations use their own scratch directory and never hold the radio lock.
 case "$VERB" in
     connect|forget|fallback|pad) valid_mac "$TARGET" || fail 'Invalid Bluetooth address';;
+    speaker) [ -z "$TARGET" ] || [ "$TARGET" = hdmi ] || fail 'Invalid output';;
     usb) printf '%s\n' "$TARGET" | grep -Eq '^plughw:CARD=[A-Za-z0-9_]{1,32},DEV=[0-9]{1,3}$' || fail 'Invalid USB audio output';;
 esac
 case "$VERB" in
@@ -775,7 +783,7 @@ case "$VERB" in
         current=$(cat "$ROUTE" 2>/dev/null || true)
         if [ "$current" = "bluealsa:DEV=$TARGET,PROFILE=a2dp" ]; then
             info=$(bt info "$TARGET") || true
-            if printf '%s\n' "$info" | grep -q '^[[:space:]]*Connected: no[[:space:]]*$'; then route ''; fi
+            if printf '%s\n' "$info" | grep -q '^[[:space:]]*Connected: no[[:space:]]*$'; then route "$(default_route)"; fi
         fi
         # Keep the saved device for reconnect on the next startup.
         emit_list
@@ -788,7 +796,7 @@ case "$VERB" in
         current=$(cat "$ROUTE" 2>/dev/null || true)
         case "$current" in
             plughw:CARD=*,DEV=*) output=$current ;;
-            *) route ''; output=speaker ;;
+            *) output=$(default_route); route "$output"; output=${output:-speaker} ;;
         esac
         # Do not start services merely to shut them down.
         timeout -s KILL 3 "$BT" pairable off >/dev/null 2>&1 || true
@@ -823,7 +831,8 @@ case "$VERB" in
         ;;
     speaker)
         STAGE='speaker selection'
-        route ''
+        # `speaker hdmi` chooses the TV's sound (HDMI) instead of the handheld's own
+        if [ "$TARGET" = hdmi ]; then route 'plughw:CARD=ahubhdmi,DEV=0'; else route ''; fi
         if [ -f "$PREF" ]; then
             TARGET=$(cat "$PREF")
             if valid_mac "$TARGET"; then bt disconnect "$TARGET" >/dev/null || true; fi
@@ -833,7 +842,7 @@ case "$VERB" in
         ;;
     forget)
         STAGE='forget pairing'
-        if [ -f "$PREF" ] && [ "$(cat "$PREF")" = "$TARGET" ]; then route ''; rm -f "$PREF"; fi
+        if [ -f "$PREF" ] && [ "$(cat "$PREF")" = "$TARGET" ]; then route "$(default_route)"; rm -f "$PREF"; fi
         if [ -f "$PADS" ]; then
             grep -vix "$TARGET" "$PADS" > "$PADS.$$" || true
             if [ -s "$PADS.$$" ]; then mv -f "$PADS.$$" "$PADS"; else rm -f "$PADS.$$" "$PADS"; fi
