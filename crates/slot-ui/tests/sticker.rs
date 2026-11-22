@@ -98,7 +98,7 @@ fn the_wordmarks_top_edge_is_antialiased_not_a_hard_step() {
 #[test]
 fn the_version_rides_above_the_readme_line() {
     let lines = sticker_lines(&fields());
-    let home = lines.iter().position(|l| l == "SLOT.SP / SEE README.").unwrap();
+    let home = lines.iter().position(|l| l == "ADVANCE.SP / SEE README.").unwrap();
     assert_eq!(lines[home - 1], "VERSION 0.1.0");
 }
 
@@ -156,16 +156,17 @@ fn a_model_baseos_gives_two_names_shows_the_first() {
 #[test]
 fn fork_credits_and_german_origin_are_present() {
     let text=sticker_lines(&fields()).join("\n");
-    for line in ["© 2026 JAKE GRAVING","BASED ON SLOT BY","BRANDON T. KOWALSKI.","MADE IN GERMANY","SLOT.SP-DE"] { assert!(text.contains(line),"{line}"); }
+    for line in ["© 2026 KLAUS PASCHEK","SLOT.SP BY JAKE GRAVING, SLOT","BY BRANDON T. KOWALSKI AND","CARTRIDGE BY NUKEBOMB3000.","MADE IN GERMANY","ADVANCE.SP"] { assert!(text.contains(line),"{line}"); }
 }
 
 #[test]
 fn copyright_stays_in_the_original_right_hand_footer() {
     let lines = sticker_lines(&fields());
     let version = lines.iter().position(|l| l == "VERSION 0.1.0").unwrap();
-    assert_eq!(lines[version - 1], "© 2026 JAKE GRAVING");
+    assert_eq!(lines[version - 1], "© 2026 KLAUS PASCHEK");
     assert_eq!(slot_ui::CREDITS.len(), 11);
-    assert!(!slot_ui::CREDITS.iter().any(|l| l.contains("JAKE GRAVING")));
+    // slot.sp's author is credited in the credits, not twice in the footer
+    assert!(!slot_ui::CREDITS.iter().any(|l| l.contains("PASCHEK")));
     if let Ok(path) = std::env::var("SLOT_STICKER_PREVIEW") {
         let face = slot_ui::sticker_face(&fields());
         let mut enc = png::Encoder::new(std::fs::File::create(path).unwrap(), face.w, face.h);
