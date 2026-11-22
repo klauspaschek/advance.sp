@@ -45,22 +45,22 @@ pub struct StickerFields<'a> {
 pub const CREDITS: [&str; 11] = [
     "THE EXQUISITE SKEUOMORPHIC",
     "ARTWORK MADE BY MARKUS.",
-    "EMULATION POWERED BY MGBA",
-    "AND GPSP. UNDERLYING OS IS",
-    "BASEOS BY PVAIBHAV. TYPE IS",
-    "GOOGLE SANS FLEX. NERD FONTS",
-    "SYMBOLS BY RYAN L MCINTYRE.",
-    "THE PANEL MASK IS DERIVED",
-    "FROM GIGAHERZ'S LCD3X.",
-    "BASED ON SLOT BY",
-    "BRANDON T. KOWALSKI.",
+    "EMULATION BY MGBA AND GPSP,",
+    "OS IS BASEOS BY PVAIBHAV.",
+    "TYPE IS GOOGLE SANS FLEX,",
+    "NERD FONTS SYMBOLS BY RYAN",
+    "L MCINTYRE. PANEL MASK FROM",
+    "GIGAHERZ'S LCD3X. BASED ON",
+    "SLOT.SP BY JAKE GRAVING, SLOT",
+    "BY BRANDON T. KOWALSKI AND",
+    "CARTRIDGE BY NUKEBOMB3000.",
 ];
 
-pub const ORIGIN: [&str; 2] = ["SLOT.SP-DE", "MADE IN GERMANY"];
+pub const ORIGIN: [&str; 2] = ["ADVANCE.SP", "MADE IN GERMANY"];
 
-pub const COPYRIGHT: &str = "\u{a9} 2026 JAKE GRAVING";
+pub const COPYRIGHT: &str = "\u{a9} 2026 KLAUS PASCHEK";
 
-pub const HOME: &str = "SLOT.SP / SEE README.";
+pub const HOME: &str = "ADVANCE.SP / SEE README.";
 
 pub fn head_rows(f: &StickerFields) -> [String; 3] {
     [
