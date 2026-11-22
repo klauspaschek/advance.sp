@@ -11,6 +11,8 @@ Local validation (Rust 1.96 now available locally): `slot` lib tests `hdmi` (6) 
 
 Pending hardware checks: cold boot with cable in; plug in and pull out on the shelf and mid-game (game resumes); picture centred full-height with no tearing across pages; TV sound and Sound → TV (HDMI); headphones keep the sound; lid closed on TV keeps playing; repeated replugging; no change without a cable. Unknowns from the port: the ALSA card name `ahubhdmi`, and whether the dispdbg switch parameters suit the RG SP's kernel.
 
+CI: workflow_dispatch release run 44976420781 on `b6bb09bf` passed (network sharing, Test and package ARM64; publish skipped as intended for a branch). Test build is artifact `release-downloads` 14735834469, expiring 2026-11-23 02:40 UTC; re-dispatch with `gh workflow run release.yml --repo klauspaschek/advance.sp --ref feature/hdmi` if it lapses. Awaiting the user's hardware test.
+
 ## Cart Studio motion and affordances — 2026-11-07
 
 Separate branch `fix/studio-motion-affordances` from main `50a9c233`; Wi-Fi/OTA is independently published as PR #215. User explicitly requests separate PRs and authorizes push, PR creation and merge only after green checks. Add directional Finish/Shape chevrons and opening chevrons, anchor cartridge/title across submenus, separate rising card from the moving/shrinking highlighted cartridge, let only side cartridges retreat downward, improve printer spring motion and caption spacing. Next: separate cached layers, add motion regressions/native captures and validate exact source in CI. Hardware testing remains pending.
