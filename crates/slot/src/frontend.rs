@@ -54,6 +54,8 @@ pub struct Frontend {
     bluetooth_spinner: Vec<TexId>,
     spinner_frames: Option<std::sync::mpsc::Receiver<Vec<slot_ui::UndoFace>>>,
     ra_sync_icon: Option<TexId>,
+    radio_icon: Option<TexId>,
+    pad_icon: Option<TexId>,
     wifi_connecting_icon: Option<TexId>,
     hud_wifi_connecting_icon: Option<TexId>,
     wifi_icon: Option<TexId>,
@@ -234,6 +236,8 @@ impl Frontend {
                 rx
             }),
             ra_sync_icon: None,
+            radio_icon: None,
+            pad_icon: None,
             wifi_connecting_icon: None,
             hud_wifi_connecting_icon: None,
             wifi_icon: None,
@@ -704,7 +708,12 @@ impl Frontend {
         }
         self.session.app_mut().wifi_connecting_indicator = if connecting { self.wifi_connecting_icon } else { None };
         self.session.app_mut().hud_wifi_connecting_indicator = if connecting { self.hud_wifi_connecting_icon } else { None };
-        if self.session.app().network.as_ref().is_some_and(|m|m.wifi_connected()) {
+        let wifi_connected = self.session.app().network.as_ref().is_some_and(|m|m.wifi_connected());
+        // switched on but not connected (nor connecting) still shows, dimmed: it drains the battery
+        let wifi_idle = !wifi_connected && !connecting
+            && self.session.app().network.as_ref().is_some_and(|m|m.wifi_switched_on());
+        self.session.app_mut().wifi_idle = wifi_idle;
+        if wifi_connected || wifi_idle {
             if self.wifi_icon.is_none() {
                 upload(compositor,&mut self.wifi_icon,slot_ui::wifi_signal_face(3,HUD_INK));
                 upload(compositor,&mut self.hud_wifi_icon,slot_ui::wifi_signal_face(3,HUD_INK));
@@ -715,13 +724,26 @@ impl Frontend {
             self.session.app_mut().wifi_indicator=None;
             self.session.app_mut().hud_wifi_indicator=None;
         }
-        if self.session.app().network.as_ref().is_some_and(|m| m.achievements_busy()) {
+        // a sync can only move with Wi-Fi connected: offline, pending work is no activity to show
+        if self.session.app().network.as_ref().is_some_and(|m| m.achievements_busy() && m.wifi_connected()) {
             if self.ra_sync_icon.is_none() {
-                let f = slot_ui::status_icon_face(Icon::Gamepad, HUD_INK);
+                let f = slot_ui::achievement_badge_face(HUD_INK);
                 upload(compositor, &mut self.ra_sync_icon, UndoFace {rgba:f.rgba,w:f.w,h:f.h});
             }
             self.session.app_mut().ra_sync_indicator = self.ra_sync_icon;
         } else { self.session.app_mut().ra_sync_indicator = None; }
+        if self.session.app_mut().bluetooth_radio_on() {
+            if self.radio_icon.is_none() {
+                let f = slot_ui::status_icon_face(Icon::Bluetooth, HUD_INK);
+                upload(compositor, &mut self.radio_icon, UndoFace {rgba:f.rgba,w:f.w,h:f.h});
+            }
+            self.session.app_mut().radio_indicator = self.radio_icon;
+        } else { self.session.app_mut().radio_indicator = None; }
+        if self.session.app().controllers_connected() && self.pad_icon.is_none() {
+            let f = slot_ui::status_icon_face(Icon::Gamepad, HUD_INK);
+            upload(compositor, &mut self.pad_icon, UndoFace {rgba:f.rgba,w:f.w,h:f.h});
+        }
+        self.session.app_mut().pad_indicator = self.pad_icon;
         let bluetooth = self.session.app().bluetooth_active();
         let usb = self.session.app().usb_audio_active();
         let kind = if usb {
@@ -734,16 +756,14 @@ impl Frontend {
         if usb || bluetooth || self.session.app().wired_audio_active() {
             let light = self.session.app().light();
             if self.audio_icon_key != Some((kind, light)) {
+                // the rune says Bluetooth is on (its own icon); any headphones, Bluetooth ones too,
+                // show as headphones where the sound goes
                 let face = |ink| {
-                    if bluetooth && !usb {
-                        crate::bluetooth::indicator_face_with_ink(ink)
-                    } else {
-                        let f = slot_ui::status_icon_face(slot_ui::Icon::Headphones, ink);
-                        slot_ui::UndoFace {
-                            rgba: f.rgba,
-                            w: f.w,
-                            h: f.h,
-                        }
+                    let f = slot_ui::status_icon_face(slot_ui::Icon::Headphones, ink);
+                    slot_ui::UndoFace {
+                        rgba: f.rgba,
+                        w: f.w,
+                        h: f.h,
                     }
                 };
                 upload(
@@ -873,7 +893,7 @@ impl Frontend {
         self.session.app_mut().set_footer_contrast(footer);
         compositor.set_backdrop_light(header);
         compositor.set_hint_light(footer);
-        for tex in [self.mute_icon,self.audio_icon,self.wifi_icon,self.wifi_connecting_icon].into_iter().flatten(){compositor.mark_backdrop_texture(tex,1);}
+        for tex in [self.mute_icon,self.audio_icon,self.wifi_icon,self.wifi_connecting_icon,self.radio_icon,self.pad_icon,self.ra_sync_icon].into_iter().flatten(){compositor.mark_backdrop_texture(tex,1);}
         sync_clock(self.session.app_mut(), compositor, &mut self.clocks,header);
         sync_binding_faces(self.session.app_mut(), compositor);
         sync_about(self.session.app_mut(), compositor, &mut self.about);
@@ -1125,6 +1145,16 @@ impl Frontend {
         }
         self.session.prepare_poweroff();
         true
+    }
+
+    /// Whether a controller is connected and whether it pressed last.
+    pub fn set_controllers(&mut self, connected: bool, pressed_last: bool) {
+        self.session.app_mut().set_controllers(connected, pressed_last);
+    }
+
+    /// A screen size step from a controller's right stick.
+    pub fn pad_picture(&mut self, larger: bool) {
+        self.session.pad_picture(larger);
     }
 
     /// A controller's extra button seen by the button checker.

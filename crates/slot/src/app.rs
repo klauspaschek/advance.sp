@@ -66,6 +66,8 @@ const BLANK_WARM_S: f32 = 1.5;
 const BLANK_DIM: f32 = 0.1;
 
 const VOLUME_STEP: u8 = 5;
+/// A radio switched on but idle: its status icon is drawn at this opacity.
+const IDLE_RADIO_ALPHA: f32 = 0.45;
 
 const AUTOSAVE_MS: Millis = 60_000;
 const RESUME_MS: Millis = 300_000;
@@ -355,12 +357,22 @@ pub struct App {
     pad_faces_by_position: bool,
     /// The HDMI transmitter has the output (checked at start: the cable restarts slot).
     on_tv: bool,
+    /// A Bluetooth (or USB) controller is connected now.
+    controllers: bool,
     pub(crate) kid_status_icon: Option<TexId>,
     pub ra_sync_indicator: Option<TexId>,
     pub wifi_connecting_indicator: Option<TexId>,
     pub hud_wifi_connecting_indicator: Option<TexId>,
     pub wifi_indicator: Option<TexId>,
     pub hud_wifi_indicator: Option<TexId>,
+    /// Wi-Fi is on but not connected: its icon is drawn dimmed.
+    pub wifi_idle: bool,
+    /// The Bluetooth rune, while Bluetooth is switched on; dimmed while nothing is connected.
+    pub radio_indicator: Option<TexId>,
+    /// A controller is connected.
+    pub pad_indicator: Option<TexId>,
+    radio_on: bool,
+    radio_checked_at: u64,
     pub audio_indicator: Option<TexId>,
     pub hud_audio_indicator: Option<TexId>,
     pub mute_indicator: Option<TexId>,
@@ -636,12 +648,18 @@ impl App {
             bluetooth_supported: false,
             pad_faces_by_position: true,
             on_tv: false,
+            controllers: false,
             kid_status_icon: None,
             ra_sync_indicator: None,
             wifi_connecting_indicator: None,
             hud_wifi_connecting_indicator: None,
             wifi_indicator: None,
             hud_wifi_indicator: None,
+            wifi_idle: false,
+            radio_indicator: None,
+            pad_indicator: None,
+            radio_on: false,
+            radio_checked_at: 0,
             audio_indicator: None,
             hud_audio_indicator: None,
             mute_indicator: None,
@@ -1385,6 +1403,8 @@ impl App {
             | QuickRow::PlayBlueLight => self.quick_value(self.playing_row(row)),
             QuickRow::AutomaticTime=>Some(if self.network.as_ref().is_some_and(|m|m.automatic_time_enabled()){QuickValue::On}else{QuickValue::Off}),
             QuickRow::ClockFormat => Some(if self.state.clock_12h {QuickValue::Hour12}else{QuickValue::Hour24}),
+            // no value, and greyed out, until a controller is connected
+            QuickRow::PadLayout => self.controllers.then_some(if self.pad_faces_by_position {QuickValue::Nintendo}else{QuickValue::Xbox}),
             QuickRow::CarouselMotion => Some(if self.state.carousel_wheel {QuickValue::Wheel}else{QuickValue::Classic}),
             QuickRow::Brightness => Some(QuickValue::level(self.state.brightness)),
             QuickRow::BlueLight => Some(QuickValue::temperature(self.state.blue_light)),
@@ -1447,6 +1467,7 @@ impl App {
             }),
             QuickRow::Bluetooth
             | QuickRow::Radio
+            | QuickRow::ButtonTest
             | QuickRow::Kids
             | QuickRow::DateTime
             | QuickRow::About
@@ -1776,6 +1797,8 @@ impl App {
             self.hud.toast(
                 if active {
                     Toast::BluetoothConnected
+                } else if lost && self.disconnect_volume == 0 {
+                    Toast::BluetoothDisconnectedSilent
                 } else {
                     Toast::BluetoothDisconnected
                 },
@@ -1810,6 +1833,8 @@ impl App {
             self.hud.toast(
                 if active {
                     Toast::UsbConnected
+                } else if unplugged && !self.bluetooth_connected && self.disconnect_volume == 0 {
+                    Toast::UsbDisconnectedSilent
                 } else {
                     Toast::UsbDisconnected
                 },
@@ -2449,6 +2474,14 @@ impl App {
         }
     }
 
+    /// The next larger or smaller screen size (Actual, Stretch, Fit, Integer) of the game playing,
+    /// as L1 and R1 step it in a Game Boy game: a controller's right stick does it in any game.
+    pub fn step_picture(&mut self, larger: bool) {
+        if matches!(self.phase, Phase::Playing { .. }) && self.in_game_menu().is_none() {
+            self.set_picture(self.video_mode.step(larger));
+        }
+    }
+
     fn set_picture(&mut self, mode: VideoMode) {
         if self.video_mode == mode {
             return;
@@ -2705,7 +2738,21 @@ impl App {
         true
     }
 
-    /// Whether the button checker (Bluetooth → Test buttons) is open and awake.
+    /// Whether Bluetooth is switched on (checked once a second: it is a file on the card).
+    pub fn bluetooth_radio_on(&mut self) -> bool {
+        let now = self.now();
+        if now >= self.radio_checked_at {
+            self.radio_checked_at = now + 1000;
+            self.radio_on = self.root.as_deref().is_some_and(crate::bluetooth::bluetooth_enabled);
+        }
+        self.radio_on
+    }
+
+    pub fn controllers_connected(&self) -> bool {
+        self.controllers
+    }
+
+    /// Whether the button checker (General → Test buttons) is open and awake.
     pub fn testing_buttons(&self) -> bool {
         self.bluetooth.as_ref().is_some_and(|m| m.testing()) && !matches!(self.phase, Phase::Doze { .. })
     }
@@ -2721,7 +2768,22 @@ impl App {
     }
 
     pub fn test_tick(&mut self, now: slot_input::Millis) {
-        if let Some(menu) = &mut self.bluetooth { menu.test_tick(now); }
+        if let Some(menu) = &mut self.bluetooth {
+            menu.test_tick(now);
+            if menu.closed {
+                self.bluetooth = None;
+            }
+        }
+    }
+
+    /// Whether a controller is connected, and whether it made the last press: the checker then
+    /// draws the controller instead of the handheld.
+    pub fn set_controllers(&mut self, connected: bool, pressed_last: bool) {
+        self.controllers = connected;
+        if let Some(menu) = self.bluetooth.as_mut().filter(|m| m.testing()) {
+            menu.test_controller = connected && pressed_last;
+            menu.pad_by_position = self.pad_faces_by_position;
+        }
     }
 
     /// Whether Bluetooth controllers' face buttons are read by position rather than label.
@@ -3168,7 +3230,8 @@ impl App {
             if self.bluetooth.as_ref().is_some_and(|m|m.volume_selected()) && matches!(action,Action::GbaDown(Btn::Left|Btn::Right)) {
                 self.remember_volume();
                 let was_muted=std::mem::take(self.muted_mut());
-                let now=self.volume().min(self.kid_volume_limit());
+                // out of mute, the volume starts from silence, not from where it was muted
+                let now=if was_muted {0} else {self.volume().min(self.kid_volume_limit())};
                 let to=if action==Action::GbaDown(Btn::Right){now.saturating_add(VOLUME_STEP).min(self.kid_volume_limit())}else{now.saturating_sub(VOLUME_STEP)};
                 if !self.set_level(HudKind::Volume,to) && was_muted {self.persist_soon();}
                 return;
@@ -3460,7 +3523,7 @@ impl App {
             QuickRow::ExitGame => self.eject(),
             QuickRow::Screen => {self.in_game_menu=Some(QuickRow::PlayBrightness);},
             QuickRow::PlaySound => self.open_quick_row(QuickRow::Bluetooth),
-            QuickRow::Wifi|QuickRow::Achievements|QuickRow::PlayAchievements|QuickRow::Updates|QuickRow::SecurityPin|QuickRow::Bluetooth|QuickRow::Radio|QuickRow::Kids|QuickRow::DisplaySchedule|QuickRow::SleepNow|QuickRow::ShutDown => self.open_quick_row(row),
+            QuickRow::Wifi|QuickRow::Achievements|QuickRow::PlayAchievements|QuickRow::Updates|QuickRow::SecurityPin|QuickRow::Bluetooth|QuickRow::Radio|QuickRow::ButtonTest|QuickRow::Kids|QuickRow::DisplaySchedule|QuickRow::SleepNow|QuickRow::ShutDown => self.open_quick_row(row),
             QuickRow::DateTime|QuickRow::TimeZone|QuickRow::About => {
                 if row == QuickRow::DateTime && self.network.as_ref().is_some_and(|m| m.automatic_time_enabled()) {
                     self.open_quick_row(row);
@@ -3525,7 +3588,12 @@ impl App {
             }
             QuickRow::ShutDown => self.hold_power(),
             QuickRow::LidClose | QuickRow::SleepTimeout | QuickRow::AutomaticTime => {}
-            QuickRow::ClockFormat | QuickRow::CarouselMotion | QuickRow::ShowTitles | QuickRow::FavoriteSort => self.change_setting(row, true),
+            QuickRow::ClockFormat | QuickRow::CarouselMotion | QuickRow::ShowTitles | QuickRow::FavoriteSort | QuickRow::PadLayout => self.change_setting(row, true),
+            QuickRow::ButtonTest => {
+                if let Some(root) = &self.root {
+                    self.bluetooth = Some(crate::bluetooth::Manager::button_test(root.clone()));
+                }
+            }
             QuickRow::Bluetooth | QuickRow::Radio => {
                 if let Some(root) = &self.root {
                     let mut menu = if row == QuickRow::Radio {
@@ -3559,7 +3627,7 @@ impl App {
             | QuickRow::SecurityPin | QuickRow::Updates => {
                 let achievement_rom=self.seated_cart().map(|cart|cart.rom.clone());
                 if let Some(menu) = &mut self.network {
-                    if row == QuickRow::PlayAchievements {menu.open_current_achievements(achievement_rom);}else if row == QuickRow::Updates {menu.open_updates();}else if row == QuickRow::Wifi { menu.open_wifi(); } else if row == QuickRow::SecurityPin {menu.open_security();} else { menu.open_achievements_for(achievement_rom); }
+                    if row == QuickRow::PlayAchievements {menu.open_current_achievements(achievement_rom);}else if row == QuickRow::Updates {menu.open_updates();}else if row == QuickRow::Wifi { menu.open_network(); } else if row == QuickRow::SecurityPin {menu.open_security();} else { menu.open_achievements_for(achievement_rom); }
                 }
             }
             QuickRow::CartStudio => self.open_studio(),
@@ -3753,6 +3821,20 @@ impl App {
             self.persist();
             return;
         }
+        if row == QuickRow::PadLayout {
+            if !self.controllers {
+                return;
+            }
+            let value = !self.pad_faces_by_position;
+            if let Some(root) = &self.root {
+                if let Err(e) = crate::bluetooth::save_pad_faces(root, value) {
+                    eprintln!("slot: controller layout: {e}");
+                    return;
+                }
+            }
+            self.pad_faces_by_position = value;
+            return;
+        }
         if row == QuickRow::ClockFormat || row == QuickRow::CarouselMotion {
             if row == QuickRow::ClockFormat {self.state.clock_12h=!self.state.clock_12h;}else{self.state.carousel_wheel=!self.state.carousel_wheel;}
             self.persist();return;
@@ -3834,6 +3916,7 @@ impl App {
             QuickRow::ShellColour => s.shell_colour = s.shell_colour.resolved(s.appearance.light()).step(right),
             QuickRow::WallpaperTint => s.wallpaper_tint = s.wallpaper_tint.step(right),
             QuickRow::ClockFormat | QuickRow::CarouselMotion | QuickRow::ScreenGeneral
+            | QuickRow::PadLayout | QuickRow::ButtonTest
             | QuickRow::Brightness
             | QuickRow::BlueLight
             | QuickRow::PlayBrightness
@@ -4003,6 +4086,10 @@ impl App {
             return true;
         }
         let s = &self.state;
+        // A press out of mute starts from silence: up is the smallest step, not the volume as
+        // it was muted plus a step, which came back loud after a while of quiet. Only the
+        // mute chord again brings back the volume as it was.
+        let heard = if self.muted() { 0 } else { self.level().min(self.kid_volume_limit()) };
         let (kind, value) = match action {
             Action::BrightnessUp => (HudKind::Brightness, up(s.brightness, 1, BRIGHTNESS_MAX)),
             Action::BrightnessDown => (HudKind::Brightness, s.brightness.saturating_sub(1)),
@@ -4011,17 +4098,12 @@ impl App {
             Action::VolumeUp => (
                 HudKind::Volume,
                 up(
-                    self.level().min(self.kid_volume_limit()),
+                    heard,
                     VOLUME_STEP,
                     VOLUME_MAX.min(self.kid_volume_limit()),
                 ),
             ),
-            Action::VolumeDown => (
-                HudKind::Volume,
-                self.level()
-                    .min(self.kid_volume_limit())
-                    .saturating_sub(VOLUME_STEP),
-            ),
+            Action::VolumeDown => (HudKind::Volume, heard.saturating_sub(VOLUME_STEP)),
             _ => return false,
         };
         if kind == HudKind::Volume {
@@ -4235,9 +4317,17 @@ impl App {
         }
     }
 
+    /// The headset's own buttons changed its volume. Turned up while slot is muted, it unmutes
+    /// at the headset's volume: slot set that to silence when it muted.
     pub fn observe_bluetooth_volume(&mut self, level: u8) {
-        if self.bluetooth_volume_address().is_none() || self.volume() == level {
+        if self.bluetooth_volume_address().is_none() || self.feedback_volume() == level {
             return;
+        }
+        if self.muted() {
+            if level == 0 {
+                return;
+            }
+            self.state.muted_bt = false;
         }
         self.state.volume_bt = Some(level.min(self.kid_volume_limit()));
         self.vol_before.clear();
@@ -4405,7 +4495,10 @@ impl App {
         let rect=self.picker().map(|p|p.field_rect(self.canvas()));self.clock_motion.update(rect,dt);
         let status_key = u8::from(self.bluetooth_active() || self.wired_audio_active() || self.usb_active)
             | (u8::from(self.muted() || self.volume() == 0) << 1)
-            | (u8::from(self.kids.active)<<2);
+            | (u8::from(self.kids.active)<<2)
+            | (u8::from(self.radio_indicator.is_some())<<3)
+            | (u8::from(self.controllers)<<4)
+            | (u8::from(self.wifi_indicator.is_some())<<5);
         self.status_motion.update(status_key, dt);
     }
 
@@ -4734,6 +4827,7 @@ impl App {
         }
         if let Some(menu) = &mut self.bluetooth {
             menu.poll();
+            menu.refresh();
             self.disconnect_volume = menu.disconnect_volume;
                 self.pause_on_disconnect = menu.pause_on_disconnect;
         }
@@ -4799,7 +4893,8 @@ impl App {
                 if !on && !self.bluetooth_connected && !self.usb_active {
                     self.pause_after_disconnect();
                     self.apply_disconnect_volume(false);
-                    self.hud.toast(Toast::HeadphonesDisconnected, self.now());
+                    let toast = if self.disconnect_volume == 0 { Toast::HeadphonesDisconnectedSilent } else { Toast::HeadphonesDisconnected };
+                    self.hud.toast(toast, self.now());
                 }
                 self.hud.set_headphones(on);
                 if let Some(menu) = &mut self.bluetooth {
@@ -5860,6 +5955,7 @@ impl App {
         frame.sliders=[Some(self.slider_motion.value(1,self.state.brightness as f32/9.0)),Some(self.slider_motion.value(2,self.state.blue_light as f32/9.0))];
         let mut disabled=Vec::new();
         if !self.network.as_ref().is_some_and(|m|m.wifi_connected()) {disabled.push(QuickRow::Updates);}
+        if !self.controllers {disabled.push(QuickRow::PadLayout);}
         if self.network.as_ref().is_some_and(|m|m.automatic_time_enabled()) {disabled.push(QuickRow::DateTime);}
         else if !self.network.as_ref().is_some_and(|m|m.wifi_connected()) {disabled.push(QuickRow::AutomaticTime);}
         QuickMenu {
@@ -5909,11 +6005,23 @@ impl App {
             out,
         );
         let mut preceding=out[audio_start..].iter().filter(|d|matches!(d,Draw::Tex{..})).count();
+        let mut dimmed=Vec::new();
         if let Some(atlas) = if in_game {self.hud_wifi_connecting_indicator} else {self.wifi_connecting_indicator} {
             slot_ui::draw_corner_wifi_connecting(self.canvas(), self.battery, self.battery_percent,
                 atlas, preceding, self.now(), out);
             preceding += 1;
         } else if let Some(tex)=if in_game {self.hud_wifi_indicator}else{self.wifi_indicator} {
+            slot_ui::draw_corner_indicator(self.canvas(),self.battery,self.battery_percent,tex,preceding,out);
+            // switched on, not connected: a reminder it is drawing power, dimmed
+            if self.wifi_idle {dimmed.push(tex);}
+            preceding += 1;
+        }
+        if let Some(tex)=self.radio_indicator {
+            slot_ui::draw_corner_indicator(self.canvas(),self.battery,self.battery_percent,tex,preceding,out);
+            if !(self.bluetooth_active() || self.controllers) {dimmed.push(tex);}
+            preceding += 1;
+        }
+        if let Some(tex)=self.pad_indicator.filter(|_|self.controllers) {
             slot_ui::draw_corner_indicator(self.canvas(),self.battery,self.battery_percent,tex,preceding,out);
             preceding += 1;
         }
@@ -5927,6 +6035,9 @@ impl App {
             }
         }
         self.status_motion.apply(&mut out[audio_start..]);
+        for draw in &mut out[audio_start..] {
+            if let Draw::Tex{tex,alpha,..}=draw {if dimmed.contains(tex) {*alpha*=IDLE_RADIO_ALPHA;}}
+        }
         if let Some(activity)=self.ra_sync_indicator {
             // Keep activity visible throughout a slow, continuous three-second breath.
             let phase=(self.now()%3000) as f32/3000.0*std::f32::consts::TAU;
@@ -8045,6 +8156,21 @@ mod bluetooth_tests {
     }
 
     #[test]
+    fn idle_radios_are_dimmed_and_a_controller_shows_its_own_icon() {
+        let mut app=App::new(vec![]);
+        let (wifi,radio,pad)=(TexId::from_raw(901),TexId::from_raw(902),TexId::from_raw(903));
+        app.wifi_indicator=Some(wifi);app.wifi_idle=true;app.radio_indicator=Some(radio);app.pad_indicator=Some(pad);
+        let alpha=|app:&App,t:TexId|{let mut d=Vec::new();app.draw_status_bar(&mut d);d.into_iter().find_map(|d|match d {Draw::Tex{tex,alpha,..} if tex==t=>Some(alpha),_=>None})};
+        assert!(alpha(&app,wifi).unwrap()<0.5,"Wi-Fi on but not connected is dimmed");
+        assert!(alpha(&app,radio).unwrap()<0.5,"Bluetooth on with nothing connected is dimmed");
+        assert_eq!(alpha(&app,pad),None,"no controller, no controller icon");
+        app.wifi_idle=false;app.controllers=true;
+        assert!(alpha(&app,wifi).unwrap()>0.9);
+        assert!(alpha(&app,radio).unwrap()>0.9,"a connected controller lights the rune");
+        assert!(alpha(&app,pad).unwrap()>0.9);
+    }
+
+    #[test]
     fn background_achievement_icon_breathes_without_disappearing_or_moving() {
         let mut app=App::new(vec![]);
         let icon=TexId::from_raw(987);app.ra_sync_indicator=Some(icon);
@@ -8077,21 +8203,40 @@ mod bluetooth_tests {
     }
 
     #[test]
-    fn native_bluetooth_feedback_preserves_mute_and_other_outputs() {
+    fn headset_buttons_turning_up_unmute_and_leave_other_outputs() {
         let mut app = App::new(vec![]);
         app.state.volume = 20;
         app.state.volume_hp = 30;
         app.bluetooth_state(Some("AA:BB:CC:DD:EE:FF".into()), true);
         app.state.muted_bt = true;
+        app.observe_bluetooth_volume(0);
+        assert!(app.muted(), "the headset at silence keeps slot muted");
+        app.observe_bluetooth_volume(6);
+        assert!(!app.muted(), "turned up on the headset, slot unmutes");
+        assert_eq!(app.output_volume(), 6, "at the headset's small step, not the muted volume");
         app.observe_bluetooth_volume(65);
         assert_eq!(app.volume(), 65);
-        assert_eq!(app.output_volume(), 0);
         assert_eq!(app.state.volume, 20);
         assert_eq!(app.state.volume_hp, 30);
         app.usb_state(true, false);
         app.observe_bluetooth_volume(90);
         assert_eq!(app.state.volume_bt, Some(65));
         assert_eq!(app.bluetooth_volume_address(), None);
+    }
+
+    #[test]
+    fn a_disconnect_says_when_it_left_the_sound_at_zero() {
+        let address = Some("AA:BB:CC:DD:EE:FF".to_owned());
+        let mut app = App::new(vec![]);
+        app.disconnect_volume = 30;
+        app.bluetooth_state(address.clone(), true);
+        app.bluetooth_state(address.clone(), false);
+        assert_eq!(app.toast(), Some(Toast::BluetoothDisconnected), "a level that is heard needs no note");
+        let mut app = App::new(vec![]);
+        app.disconnect_volume = 0;
+        app.usb_state(true, false);
+        app.usb_state(false, true);
+        assert_eq!(app.toast(), Some(Toast::UsbDisconnectedSilent));
     }
 
     #[test]
@@ -8104,7 +8249,7 @@ mod bluetooth_tests {
         app.bluetooth_state(address.clone(), false);
         assert_eq!(app.output_volume(), 0);
         assert_eq!(app.hud_icon(), Icon::VolumeMuted);
-        assert_eq!(app.toast(), Some(Toast::BluetoothDisconnected));
+        assert_eq!(app.toast(), Some(Toast::BluetoothDisconnectedSilent), "the silence is explained");
         app.bluetooth_state(None, false); // fallback helper clears the route
         app.state.volume = 15;app.state.muted=false; // adjust speaker while disconnected
         app.bluetooth_state(address.clone(), true);

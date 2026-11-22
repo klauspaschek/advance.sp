@@ -494,6 +494,21 @@ emit_list() {
     esac
     printf 'OUTPUT %s\n' "${selected:-speaker}"
 }
+# Prints the first paired headphones other than $1 that are connected now: they offer
+# headphone audio (A2DP) and are not a controller.
+connected_headphones() {
+    devices=$(bt devices Connected) || return 0
+    printf '%s\n' "$devices" | while read -r kind address rest; do
+        [ "$kind" = Device ] && valid_mac "$address" || continue
+        [ "$(printf '%s' "$address" | tr 'a-f' 'A-F')" != "$(printf '%s' "$1" | tr 'a-f' 'A-F')" ] || continue
+        ! grep -qix "$address" "$PADS" 2>/dev/null || continue
+        info=$(bt info "$address") || continue
+        printf '%s\n' "$info" | grep -q '^[[:space:]]*Paired: yes[[:space:]]*$' || continue
+        printf '%s\n' "$info" | grep -qi '^[[:space:]]*UUID:.*0000110b-0000-1000-8000-00805f9b34fb' || continue
+        printf '%s\n' "$address"
+        break
+    done
+}
 wait_audio_transport() {
     STAGE='audio transport readiness'
     device=$(printf '%s' "$TARGET" | tr ':' '_' | tr 'a-f' 'A-F')
@@ -519,9 +534,7 @@ connect() {
     if ! printf '%s\n' "$info" | grep -q '^[[:space:]]*Paired: yes[[:space:]]*$'; then
         ! automatic || fail 'Saved headphones need to be paired again'
         start_session
-        STAGE=pairing
-        send "pair $TARGET"
-        wait_property Paired 45
+        pair_device
         send 'scan off'
     fi
     # Verify the selected paired device before trusting it. Trust must precede
@@ -557,6 +570,14 @@ connect() {
             CONNECT_REASON=$(printf '%s\n' "$connection" | sed -n 's/.*Failed to connect: //p' | tail -n 1)
         fi
     fi
+    # Headphones taken out of their case connect by themselves: BlueZ then says they are
+    # connected already, or still connecting, instead of connecting them. That is no failure:
+    # whether the link and its audio are ready is checked below, as after any connect.
+    case $CONNECT_REASON in
+        *AlreadyConnected*|*InProgress*|*'In Progress'*)
+            log "The headphones are connecting by themselves ($CONNECT_REASON)"
+            CONNECT_REASON='' ;;
+    esac
     # An explicit Connect rejection is final after the bounded retry.
     [ -z "$CONNECT_REASON" ] || fail "Connection failed: $CONNECT_REASON"
     if automatic; then wait_property Connected 8; else wait_property Connected 6; fi
@@ -577,7 +598,18 @@ connect() {
 }
 # Xbox controllers often drop the link and cancel the first pairing, particularly while the
 # radio is still scanning. Stop scanning first, and retry a cancelled or dropped attempt twice.
-pad_pair() {
+# Headphones that still hold an old pairing reconnect on their own, unpaired, and then reject
+# the new one: drop that link first, and again before retrying a rejected attempt.
+drop_unpaired_link() {
+    info=$(bt info "$TARGET") || true
+    if printf '%s\n' "$info" | grep -q '^[[:space:]]*Connected: yes[[:space:]]*$'; then
+        log 'Dropping the unpaired link before pairing'
+        bt disconnect "$TARGET" >/dev/null || true
+        sleep "${SLOT_BT_RETRY_DELAY:-2}"
+    fi
+}
+pair_device() {
+    drop_unpaired_link
     attempt=1
     while :; do
         failures=$(grep -c 'Failed to pair:' "$WORK/session-output" || true)
@@ -599,11 +631,15 @@ pad_pair() {
             now=$(grep -c 'Failed to pair:' "$WORK/session-output" || true)
             if [ "$now" -gt "$failures" ]; then
                 reason=$(sed -n 's/.*Failed to pair: //p' "$WORK/session-output" | tail -n 1)
-                if [ "$attempt" -lt 3 ] && printf '%s\n' "$reason" | grep -Eq 'AuthenticationCanceled|ConnectionAttemptFailed|AuthenticationTimeout|Page Timeout'; then
-                    log "Controller pairing attempt $attempt failed ($reason); retrying"
+                if [ "$attempt" -lt 3 ] && printf '%s\n' "$reason" | grep -Eq 'AuthenticationCanceled|AuthenticationRejected|AuthenticationFailed|ConnectionAttemptFailed|AuthenticationTimeout|Page Timeout'; then
+                    log "Pairing attempt $attempt failed ($reason); retrying"
                     attempt=$((attempt + 1))
                     sleep "${SLOT_BT_RETRY_DELAY:-2}"
+                    drop_unpaired_link
                     break
+                fi
+                if printf '%s\n' "$reason" | grep -Eq 'AuthenticationRejected|AuthenticationFailed'; then
+                    fail 'Pairing refused: put the device in pairing mode and try again'
                 fi
                 fail "Pairing failed: $reason"
             fi
@@ -620,7 +656,7 @@ connect_pad() {
     info=$(bt info "$TARGET") || true
     if ! printf '%s\n' "$info" | grep -q '^[[:space:]]*Paired: yes[[:space:]]*$'; then
         start_session
-        pad_pair
+        pair_device
     fi
     STAGE='controller service discovery'
     n=0
@@ -813,6 +849,15 @@ case "$VERB" in
         # Recheck under the lock: a queued manual action may have changed the choice.
         [ ! -f "$OFF" ] && [ -f "$PREF" ] || exit 0
         TARGET=$(cat "$PREF")
+        # Other paired headphones that connected by themselves (taken out of their case)
+        # take over the sound, as the saved ones would.
+        if [ "$VERB" = reconnect ] && ! bt info "$TARGET" | grep -q '^[[:space:]]*Connected: yes[[:space:]]*$'; then
+            other=$(connected_headphones "$TARGET")
+            if [ -n "$other" ]; then
+                log "Paired headphones $other connected by themselves; switching to them"
+                TARGET=$other
+            fi
+        fi
         connect
         ;;
     *) fail 'Unknown Bluetooth operation' ;;

@@ -3,7 +3,7 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -36,11 +36,13 @@ pub struct DeviceInput {
     pads: Arc<Mutex<Vec<String>>>,
     extras: Arc<Mutex<Vec<PadExtra>>>,
     arrived: Arc<AtomicBool>,
+    last_source: Arc<AtomicU8>,
     share_since: Option<Millis>,
     share_power: bool,
     actions: Vec<Action>,
     testing: bool,
     tested: Vec<(&'static str, bool)>,
+    picture_steps: Vec<bool>,
     hall: Option<PathBuf>,
     lid_shut: Option<bool>,
     next_lid_poll: Millis,
@@ -67,6 +69,7 @@ impl DeviceInput {
             pads: Arc::new(Mutex::new(Vec::new())),
             extras: Arc::new(Mutex::new(Vec::new())),
             arrived: Arc::new(AtomicBool::new(false)),
+            last_source: Arc::new(AtomicU8::new(0)),
             trace,
         };
         nodes.open_new(false);
@@ -77,11 +80,13 @@ impl DeviceInput {
             pads: nodes.pads.clone(),
             extras: nodes.extras.clone(),
             arrived: nodes.arrived.clone(),
+            last_source: nodes.last_source.clone(),
             share_since: None,
             share_power: false,
             actions: Vec::new(),
             testing: false,
             tested: Vec::new(),
+            picture_steps: Vec::new(),
             hall: find_hall(Path::new(PSY)),
             lid_shut: None,
             next_lid_poll: 0,
@@ -109,6 +114,7 @@ struct Nodes {
     pads: Arc<Mutex<Vec<String>>>,
     extras: Arc<Mutex<Vec<PadExtra>>>,
     arrived: Arc<AtomicBool>,
+    last_source: Arc<AtomicU8>,
     trace: Option<Arc<Trace>>,
 }
 
@@ -147,6 +153,7 @@ impl Nodes {
                 steers: self.stick.clone(),
                 by_position: self.by_position.clone(),
                 extras: pad.then(|| self.extras.clone()),
+                last_source: self.last_source.clone(),
                 trace: self.trace.clone(),
             };
             let opened = self.opened.clone();
@@ -225,6 +232,8 @@ struct Reader {
     by_position: Arc<AtomicBool>,
     /// A gamepad's buttons the handheld does not have.
     extras: Option<Arc<Mutex<Vec<PadExtra>>>>,
+    /// Who pressed last: 1 the handheld, 2 a gamepad.
+    last_source: Arc<AtomicU8>,
     trace: Option<Arc<Trace>>,
 }
 
@@ -239,8 +248,10 @@ impl Reader {
         if let Some(extras) = &self.extras {
             lock(extras).extend([
                 PadExtra::Share(false),
-                PadExtra::Rewind(false),
-                PadExtra::FastForward(false),
+                PadExtra::ScreenSmaller(false),
+                PadExtra::ScreenLarger(false),
+                PadExtra::VolumeUp(false),
+                PadExtra::VolumeDown(false),
             ]);
         }
     }
@@ -297,9 +308,17 @@ impl Reader {
                     }
                     if ev.kind == EV_ABS {
                         if let Some(shortcuts) = axes.right_stick(ev) {
+                            if shortcuts.iter().any(|e| e.held().1) {
+                                self.last_source.store(2, Ordering::Relaxed);
+                            }
                             lock(extras).extend(shortcuts);
                             continue;
                         }
+                        let left = axes.left_stick(ev);
+                        if left.iter().any(|e| e.held().1) {
+                            self.last_source.store(2, Ordering::Relaxed);
+                        }
+                        lock(extras).extend(left);
                     }
                 }
                 match ev.kind {
@@ -314,6 +333,10 @@ impl Reader {
                     }
                     _ => events.extend(to_raw_for(self.layout, faces, ev)),
                 }
+            }
+            // who pressed last (the button checker draws that device): any press, d-pad included
+            if events.iter().any(|e| matches!(e, RawEvent::Down(b) if !matches!(b, Btn::Lid | Btn::Power))) {
+                self.last_source.store(if pad { 2 } else { 1 }, Ordering::Relaxed);
             }
             if events.is_empty() {
                 continue;
@@ -392,6 +415,16 @@ impl DeviceInput {
         std::mem::take(&mut self.actions)
     }
 
+    /// The screen size steps asked for since the last call: true for larger.
+    pub fn take_picture_steps(&mut self) -> Vec<bool> {
+        std::mem::take(&mut self.picture_steps)
+    }
+
+    /// Whether the last button pressed was a gamepad's rather than the handheld's.
+    pub fn pad_pressed_last(&self) -> bool {
+        self.last_source.load(Ordering::Relaxed) == 2
+    }
+
     /// Whether a gamepad connected since the last call (after startup).
     pub fn take_pad_arrival(&self) -> bool {
         self.arrived.swap(false, Ordering::Relaxed)
@@ -417,8 +450,18 @@ impl DeviceInput {
         std::mem::take(&mut self.tested)
     }
 
+    /// The right stick held up or down is the volume key held; it is let go only if it was
+    /// pressed, so a controller that drops cannot release a key nobody held.
+    /// One push of the right stick is one tap of a volume key: held, the volume keys repeat,
+    /// and a stick left pushed raised the volume fast enough to hurt in headphones. The stick
+    /// steps again only once it came back to the middle.
+    fn stick_volume(key: Btn, out: &mut Vec<RawEvent>) {
+        out.extend([RawEvent::Down(key), RawEvent::Up(key)]);
+    }
+
     fn pad_extras(&mut self, now: Millis, out: &mut Vec<RawEvent>) {
-        for extra in std::mem::take(&mut *lock(&self.extras)) {
+        let extras = std::mem::take(&mut *lock(&self.extras));
+        for extra in extras {
             if self.testing {
                 self.tested.push(extra.held());
                 continue;
@@ -441,14 +484,18 @@ impl DeviceInput {
                 }
                 PadExtra::SaveState(true) => self.actions.push(Action::SaveState),
                 PadExtra::LoadState(true) => self.actions.push(Action::LoadState),
-                PadExtra::Rewind(on) => self.actions.push(if on { Action::RewindStart } else { Action::RewindStop }),
-                PadExtra::FastForward(on) => self.actions.push(if on { Action::FfStart } else { Action::FfStop }),
-                PadExtra::ShaderNext(true) => self.actions.push(Action::ShaderNext),
-                PadExtra::ShaderPrev(true) => self.actions.push(Action::ShaderPrev),
+                // the screen size steps once per push, as L1 and R1 step it in a GB game
+                PadExtra::ScreenSmaller(true) => self.picture_steps.push(false),
+                PadExtra::ScreenLarger(true) => self.picture_steps.push(true),
+                PadExtra::VolumeUp(true) => Self::stick_volume(Btn::VolUp, out),
+                PadExtra::VolumeDown(true) => Self::stick_volume(Btn::VolDown, out),
                 PadExtra::SaveState(false)
                 | PadExtra::LoadState(false)
-                | PadExtra::ShaderNext(false)
-                | PadExtra::ShaderPrev(false) => {}
+                | PadExtra::ScreenSmaller(false)
+                | PadExtra::ScreenLarger(false)
+                | PadExtra::VolumeUp(false)
+                | PadExtra::VolumeDown(false)
+                | PadExtra::LeftStick(..) => {}
             }
         }
         if let Some(since) = self.share_since.filter(|_| !self.testing) {
@@ -563,6 +610,40 @@ mod checker_tests {
         input.set_testing(false);
         lock(&input.extras).push(PadExtra::Share(false));
         assert!(input.poll(5100).is_empty(), "the press began while testing: no screenshot");
+        assert!(input.take_actions().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod stick_volume_tests {
+    use super::*;
+
+    #[test]
+    fn the_right_stick_steps_the_volume_once_per_push() {
+        let d = tempfile::tempdir().unwrap();
+        let mut input = DeviceInput::open_in(&d.path().join("dev"), &d.path().join("sys"), d.path(), false);
+        lock(&input.extras).push(PadExtra::VolumeUp(true));
+        assert_eq!(input.poll(0), vec![RawEvent::Down(Btn::VolUp), RawEvent::Up(Btn::VolUp)], "a tap, never a held key");
+        assert!(input.poll(2000).is_empty(), "held up, it does not repeat");
+        lock(&input.extras).extend([PadExtra::VolumeUp(false), PadExtra::VolumeDown(false)]);
+        assert!(input.poll(2010).is_empty(), "back in the middle, nothing to let go");
+        lock(&input.extras).push(PadExtra::VolumeDown(true));
+        assert_eq!(input.poll(2100), vec![RawEvent::Down(Btn::VolDown), RawEvent::Up(Btn::VolDown)]);
+        assert!(input.take_actions().is_empty(), "no shader change any more");
+    }
+}
+
+#[cfg(test)]
+mod picture_step_tests {
+    use super::*;
+
+    #[test]
+    fn the_right_stick_across_steps_the_screen_size_once_per_push() {
+        let d = tempfile::tempdir().unwrap();
+        let mut input = DeviceInput::open_in(&d.path().join("dev"), &d.path().join("sys"), d.path(), false);
+        lock(&input.extras).extend([PadExtra::ScreenLarger(true), PadExtra::ScreenLarger(false), PadExtra::ScreenSmaller(true)]);
+        assert!(input.poll(0).is_empty(), "no buttons, no rewind or fast-forward");
+        assert_eq!(input.take_picture_steps(), vec![true, false]);
         assert!(input.take_actions().is_empty());
     }
 }

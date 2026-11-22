@@ -297,14 +297,17 @@ pub enum PadExtra {
     SaveState(bool),
     /// The right stick pressed in (loads a state) or let go.
     LoadState(bool),
-    /// The right stick held left (true) or let go (false).
-    Rewind(bool),
-    /// The right stick held right (true) or let go (false).
-    FastForward(bool),
-    /// The right stick pushed up (next shader) or let go.
-    ShaderNext(bool),
-    /// The right stick pushed down (previous shader) or let go.
-    ShaderPrev(bool),
+    /// The right stick pushed left (the next smaller screen size) or let go.
+    ScreenSmaller(bool),
+    /// The right stick pushed right (the next larger screen size) or let go.
+    ScreenLarger(bool),
+    /// The right stick held up (volume up, repeating like the volume key) or let go.
+    VolumeUp(bool),
+    /// The right stick held down (volume down) or let go.
+    VolumeDown(bool),
+    /// The left stick pushed one way (0 left, 1 right, 2 up, 3 down) or let go: it steers the
+    /// d-pad anyway, this is for the button checker only.
+    LeftStick(u8, bool),
 }
 
 impl PadExtra {
@@ -314,10 +317,11 @@ impl PadExtra {
             PadExtra::Share(on) => ("Share", on),
             PadExtra::SaveState(on) => ("L3", on),
             PadExtra::LoadState(on) => ("R3", on),
-            PadExtra::Rewind(on) => ("R←", on),
-            PadExtra::FastForward(on) => ("R→", on),
-            PadExtra::ShaderNext(on) => ("R↑", on),
-            PadExtra::ShaderPrev(on) => ("R↓", on),
+            PadExtra::ScreenSmaller(on) => ("R←", on),
+            PadExtra::ScreenLarger(on) => ("R→", on),
+            PadExtra::VolumeUp(on) => ("R↑", on),
+            PadExtra::VolumeDown(on) => ("R↓", on),
+            PadExtra::LeftStick(dir, on) => (["L←", "L→", "L↑", "L↓"][usize::from(dir.min(3))], on),
         }
     }
 }
@@ -405,8 +409,8 @@ const RIGHT_PRESS: i32 = 2048;
 const RIGHT_LET_GO: i32 = 1024;
 
 /// An external pad's axes: the left stick and the hat steer the d-pad, an analog trigger past
-/// half its travel presses L2 or R2, and the right stick is a set of shortcuts (rewind and
-/// fast-forward across, the shader up and down).
+/// half its travel presses L2 or R2, and the right stick is a set of shortcuts (the screen size
+/// across, the volume up and down).
 pub struct PadAxes {
     stick: [Range; 2],
     trigger_codes: [u16; 2],
@@ -415,6 +419,7 @@ pub struct PadAxes {
     right_codes: [u16; 2],
     right: [Range; 2],
     right_held: [i32; 2],
+    left_held: [i32; 2],
 }
 
 impl PadAxes {
@@ -427,6 +432,7 @@ impl PadAxes {
             right_codes: right_stick_axes(trigger_codes),
             right: [Range::STICK; 2],
             right_held: [0; 2],
+            left_held: [0; 2],
         }
     }
 
@@ -438,6 +444,32 @@ impl PadAxes {
 
     pub fn right_codes(&self) -> [u16; 2] {
         self.right_codes
+    }
+
+    /// The left stick's direction for the button checker, as it changes.
+    pub fn left_stick(&mut self, ev: Ev) -> Vec<PadExtra> {
+        let axis = match ev.code {
+            ABS_X => 0,
+            ABS_Y => 1,
+            _ => return Vec::new(),
+        };
+        let value = self.stick[axis].stick(ev.value);
+        let held = self.left_held[axis];
+        let reach = if held == 0 { RIGHT_PRESS } else { RIGHT_LET_GO };
+        let now = if value.abs() >= reach { value.signum() } else { 0 };
+        if now == held {
+            return Vec::new();
+        }
+        self.left_held[axis] = now;
+        let dir = |v: i32| if axis == 0 { u8::from(v > 0) } else { 2 + u8::from(v > 0) };
+        let mut out = Vec::new();
+        if held != 0 {
+            out.push(PadExtra::LeftStick(dir(held), false));
+        }
+        if now != 0 {
+            out.push(PadExtra::LeftStick(dir(now), true));
+        }
+        out
     }
 
     /// The right stick's shortcuts, or `None` for an axis that is not the right stick.
@@ -454,25 +486,25 @@ impl PadAxes {
         let mut out = Vec::new();
         if axis == 0 {
             match held {
-                -1 => out.push(PadExtra::Rewind(false)),
-                1 => out.push(PadExtra::FastForward(false)),
+                -1 => out.push(PadExtra::ScreenSmaller(false)),
+                1 => out.push(PadExtra::ScreenLarger(false)),
                 _ => {}
             }
             match now {
-                -1 => out.push(PadExtra::Rewind(true)),
-                1 => out.push(PadExtra::FastForward(true)),
+                -1 => out.push(PadExtra::ScreenSmaller(true)),
+                1 => out.push(PadExtra::ScreenLarger(true)),
                 _ => {}
             }
         } else {
             // up is negative
             match held {
-                -1 => out.push(PadExtra::ShaderNext(false)),
-                1 => out.push(PadExtra::ShaderPrev(false)),
+                -1 => out.push(PadExtra::VolumeUp(false)),
+                1 => out.push(PadExtra::VolumeDown(false)),
                 _ => {}
             }
             match now {
-                -1 => out.push(PadExtra::ShaderNext(true)),
-                1 => out.push(PadExtra::ShaderPrev(true)),
+                -1 => out.push(PadExtra::VolumeUp(true)),
+                1 => out.push(PadExtra::VolumeDown(true)),
                 _ => {}
             }
         }

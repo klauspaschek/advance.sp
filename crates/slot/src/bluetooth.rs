@@ -65,6 +65,18 @@ pub fn parse_devices(text: &str) -> Vec<Headphones> {
             }
         }
     }
+    // Earbuds often also advertise a second identity (Bluetooth LE, for their app) under the
+    // same name, with no device type: only the one that plays audio is listed.
+    let shadowed = |d: &Headphones| {
+        !d.paired
+            && !d.connected
+            && d.kind.is_empty()
+            && devices.iter().any(|o| {
+                o.address != d.address && o.name.trim() == d.name.trim() && (!o.kind.is_empty() || o.paired)
+            })
+    };
+    let hidden: Vec<String> = devices.iter().filter(|d| shadowed(d)).map(|d| d.address.clone()).collect();
+    devices.retain(|d| !hidden.contains(&d.address));
     devices
 }
 
@@ -107,15 +119,6 @@ pub enum Page {
     Test,
 }
 
-/// The button checker's rows: a label and the buttons it shows.
-const TEST_GROUPS: [(&str, &[&str]); 5] = [
-    ("D-pad", &["Up", "Down", "Left", "Right"]),
-    ("Face buttons", &["A", "B", "X", "Y"]),
-    ("Shoulders", &["L1", "R1", "L2", "R2"]),
-    ("System", &["Select", "Start", "Menu", "Vol+", "Vol-"]),
-    ("Controller", &["Share", "L3", "R3", "RS left", "RS right", "RS up", "RS down"]),
-];
-
 /// How long B must be held to leave the button checker: a tap of B is tested like any other.
 pub const TEST_LEAVE_MS: u64 = 1000;
 
@@ -151,7 +154,11 @@ fn extra_name(name: &str) -> &'static str {
         "R←" => "RS left",
         "R→" => "RS right",
         "R↑" => "RS up",
-        _ => "RS down",
+        "R↓" => "RS down",
+        "L←" => "LS left",
+        "L→" => "LS right",
+        "L↑" => "LS up",
+        _ => "LS down",
     }
 }
 
@@ -172,7 +179,7 @@ pub fn pad_faces_by_position(root: &std::path::Path) -> bool {
         .is_ok_and(|text| text.lines().any(|l| l.trim() == "faces=labels"))
 }
 
-fn save_pad_faces(root: &std::path::Path, by_position: bool) -> std::io::Result<()> {
+pub fn save_pad_faces(root: &std::path::Path, by_position: bool) -> std::io::Result<()> {
     let path = root.join(PAD_FACES_FILE);
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
@@ -187,10 +194,23 @@ pub struct Manager {
     pub view: View,
     pub pad_by_position: bool,
     pairing_pad: Option<String>,
+    /// The last verb asked, so a result knows what it answers.
+    last_verb: &'static str,
+    /// When the device list was last read: it is read again every few seconds while the menu
+    /// is open, so devices that reconnect by themselves get their check mark.
+    refreshed_at: Option<std::time::Instant>,
     test_held: Vec<&'static str>,
     test_b_since: Option<u64>,
-    /// The checker's group pressed last: the focus bar follows it.
-    test_focus: usize,
+    /// When Share went down in the checker, and the checker's clock: its line says what a hold
+    /// of that length does.
+    test_share_since: Option<u64>,
+    /// When MENU went down in the checker: held long enough, it ejects the game.
+    test_menu_since: Option<u64>,
+    test_now: u64,
+    /// The checker draws the Xbox controller: one is connected and was pressed last.
+    pub test_controller: bool,
+    /// The checker was opened on its own (General → Test buttons) and has been left.
+    pub closed: bool,
     pub page: Page,
     stack: Vec<Page>,
     pub devices: Vec<Headphones>,
@@ -225,6 +245,7 @@ pub fn error_notice(status:&str)->&'static str {
     else if error.contains("save") {"Couldn’t save settings. Check the SD card."}
     else if error.contains("br-connection-busy") || error.contains("another bluetooth operation") || error.contains("inprogress") {"Bluetooth is busy. Wait a moment, then retry."}
     else if error.contains("page-timeout") || error.contains("waiting for connected") {"Device didn’t answer. Wake it and try again."}
+    else if error.contains("pairing refused") {"Pairing refused. Put the device in pairing mode."}
     else if error.contains("authentication") || error.contains("pairing failed") {"Pairing failed. Forget the device and pair again."}
     else if error.contains("profile-unavailable") || error.contains("not supported") {"Bluetooth audio unavailable. Try pairing again."}
     else if error.contains("notready") || error.contains("no default controller") || error.contains("initialization") || error.contains("couldn’t start") {"Bluetooth isn’t ready. Turn it off and on."}
@@ -247,9 +268,15 @@ impl Manager {
             view: View::Sound,
             pad_by_position: pad_faces_by_position(&root),
             pairing_pad: None,
+            last_verb: "",
+            refreshed_at: None,
             test_held: Vec::new(),
             test_b_since: None,
-            test_focus: 0,
+            test_share_since: None,
+            test_menu_since: None,
+            test_now: 0,
+            test_controller: false,
+            closed: false,
             root,
             page: Page::Home,
             stack: Vec::new(),
@@ -275,6 +302,14 @@ impl Manager {
             manager.ask("list", None);
         }
         manager
+    }
+
+    /// The button checker on its own (General → Test buttons): leaving it closes it.
+    pub fn button_test(root: PathBuf) -> Self {
+        let mut menu = Self::new(root, false);
+        menu.view = View::Bluetooth;
+        menu.page = Page::Test;
+        menu
     }
 
     /// The Bluetooth tile's manager.
@@ -338,6 +373,7 @@ impl Manager {
         self.forget_confirmation = None;
         self.choosing_route = matches!(verb, "speaker" | "connect" | "off" | "usb" | "local");
         self.pairing_pad = (verb == "pad").then(|| address.clone()).flatten();
+        self.last_verb = verb;
         let root = self.root.clone();
         let (tx, rx) = mpsc::channel();
         self.pending = Some(rx);
@@ -396,8 +432,13 @@ impl Manager {
                     }
                 }
                 if let Some(output) = message.output {
+                    // Sound moves to the output chosen; the Bluetooth tile stays where it is,
+                    // unless headphones were just connected from its list
+                    let follow = self.sound() || self.last_verb == "connect";
                     if self.choosing_route && !message.status.starts_with("Error:") {
                         self.route_choice = Some(output.clone());
+                    }
+                    if follow && self.choosing_route && !message.status.starts_with("Error:") {
                         self.page = Page::Home;
                         self.stack.clear();
                         self.selected = self
@@ -438,6 +479,7 @@ impl Manager {
                 self.selected = self.selected.min(self.rows().len().saturating_sub(1));
                 self.pending = None;
                 self.cancel_path = None;
+                self.refreshed_at = Some(std::time::Instant::now());
             }
             Err(mpsc::TryRecvError::Disconnected) => {
                 self.status = "Error: Bluetooth worker stopped".into();
@@ -446,6 +488,20 @@ impl Manager {
             }
             Err(mpsc::TryRecvError::Empty) => {}
         }
+    }
+
+    /// Reads the device list again every few seconds while the menu is open and idle: a
+    /// controller or headphones that reconnect by themselves get their check mark.
+    pub fn refresh(&mut self) {
+        const EVERY: std::time::Duration = std::time::Duration::from_secs(3);
+        if !self.bluetooth_available || self.pending.is_some() || self.forget_confirmation.is_some() || self.testing() {
+            return;
+        }
+        if self.refreshed_at.is_some_and(|at| at.elapsed() < EVERY) {
+            return;
+        }
+        self.refreshed_at = Some(std::time::Instant::now());
+        self.ask("list", None);
     }
 
     pub fn observe_output(&mut self, address: Option<&str>, connected: bool) {
@@ -472,8 +528,6 @@ impl Manager {
     fn tv_row(&self) -> Option<usize> { (self.sound() && self.tv).then(|| self.local_row() + 1) }
     fn device_start(&self) -> usize { if self.sound() { self.local_row() + 1 + usize::from(self.tv) } else { 1 } }
     fn pair_row(&self) -> usize { self.device_start() + self.device_indices().len() + if self.sound() { self.usb_devices.len() } else { 0 } }
-    fn faces_row(&self) -> usize { self.pair_row() + 1 }
-    fn test_row(&self) -> usize { self.faces_row() + 1 }
     fn disconnect_row(&self) -> usize { self.pair_row() }
     fn pause_row(&self) -> usize { self.disconnect_row() + 1 }
     fn carousel_row(&self) -> usize { self.pause_row() + 1 }
@@ -571,28 +625,61 @@ impl Manager {
         self.page == Page::Test
     }
 
+    /// The checker's state as one row, for the face: which drawing, which layout, what is held,
+    /// and what the held buttons do.
     fn test_rows(&self) -> Vec<String> {
-        TEST_GROUPS
+        vec![format!(
+            "TESTVIEW {} {} {}|{}",
+            u8::from(self.test_controller),
+            u8::from(self.pad_by_position),
+            self.test_held.join(","),
+            self.test_meanings().join(",")
+        )]
+    }
+
+    /// What the held buttons do, in the menus' own words: a button is its name, a controller's
+    /// extra control is the shortcut it is (the left stick shows as the d-pad it steers).
+    pub fn test_meanings(&self) -> Vec<&'static str> {
+        let held_for = self.test_share_since.map_or(0, |at| self.test_now.saturating_sub(at));
+        let menu_for = self.test_menu_since.map_or(0, |at| self.test_now.saturating_sub(at));
+        // both volume keys together mute, as they do outside the checker
+        let mute = self.test_held.contains(&"Vol+") && self.test_held.contains(&"Vol-");
+        let mut meanings: Vec<&'static str> = self.test_held
             .iter()
-            .map(|(label, names)| {
-                let held: Vec<&str> = names.iter().copied().filter(|n| self.test_held.contains(n)).collect();
-                format!("TEST {label}|{}", if held.is_empty() { "–".to_owned() } else { held.join(" ") })
+            .filter_map(|name| match *name {
+                "Vol+" | "Vol-" if mute => None,
+                // held, MENU (the Xbox button too) ejects the game
+                "Menu" if menu_for >= slot_input::MENU_HOLD_MS => Some("Eject Game"),
+                "LS up" | "LS down" | "LS left" | "LS right" => None,
+                "RS up" => Some("Vol+"),
+                "RS down" => Some("Vol-"),
+                "RS left" => Some("Scaling Back"),
+                "RS right" => Some("Scaling Next"),
+                "L3" => Some("Save State"),
+                "R3" => Some("Load State"),
+                // tapped, a screenshot; held, the power button: let go to sleep, keep holding
+                // to power off
+                "Share" if held_for < crate::input::SHARE_POWER_MS => Some("Screenshot"),
+                "Share" if held_for < crate::input::SHARE_POWER_MS + slot_input::POWER_HOLD_MS => Some("Sleep"),
+                "Share" => Some("Power Off"),
+                other => Some(other),
             })
-            .collect()
+            .collect();
+        if mute {
+            meanings.push("Mute");
+        }
+        meanings
+    }
+
+    /// The names held in the checker now.
+    pub fn test_held(&self) -> &[&'static str] {
+        &self.test_held
     }
 
     fn hold(&mut self, name: &'static str) {
         if !self.test_held.contains(&name) { self.test_held.push(name); }
-        if let Some(group) = TEST_GROUPS.iter().position(|(_, names)| names.contains(&name)) {
-            self.test_focus = group;
-        }
     }
 
-    fn test_row_held(&self, row: usize) -> bool {
-        TEST_GROUPS
-            .get(row)
-            .is_some_and(|(_, names)| names.iter().any(|n| self.test_held.contains(n)))
-    }
 
     /// A button pressed or let go while the checker is open, as the hardware sent it.
     pub fn test_input(&mut self, event: RawEvent, now: u64) {
@@ -600,10 +687,12 @@ impl Manager {
             RawEvent::Down(button) => {
                 if let Some(name) = test_name(button) { self.hold(name); }
                 if button == Btn::B { self.test_b_since = Some(now); }
+                if button == Btn::Menu && self.test_menu_since.is_none() { self.test_menu_since = Some(now); }
             }
             RawEvent::Up(button) => {
                 if let Some(name) = test_name(button) { self.test_held.retain(|n| *n != name); }
                 if button == Btn::B { self.test_b_since = None; }
+                if button == Btn::Menu { self.test_menu_since = None; }
             }
         }
     }
@@ -611,22 +700,38 @@ impl Manager {
     /// A controller's extra button (Share, the stick clicks, the right stick) held or let go.
     pub fn test_extra(&mut self, name: &str, down: bool) {
         let name = extra_name(name);
+        let was_held = self.test_held.contains(&name);
         self.test_held.retain(|n| *n != name);
         if down { self.hold(name); }
+        if name == "Share" {
+            if !down { self.test_share_since = None; }
+            else if !was_held { self.test_share_since = Some(self.test_now); }
+        }
     }
 
     /// Leaves the checker once B has been held long enough.
     pub fn test_tick(&mut self, now: u64) {
+        self.test_now = now;
         if self.testing() && self.test_b_since.is_some_and(|at| now.saturating_sub(at) >= TEST_LEAVE_MS) {
             self.test_held.clear();
             self.test_b_since = None;
-            self.page = self.stack.pop().unwrap_or(Page::Home);
-            self.selected = self.test_row();
+            match self.stack.pop() {
+                Some(page) => self.page = page,
+                None => self.closed = true,
+            }
         }
     }
 
     fn bluetooth_rows(&self) -> Vec<String> {
-        let kind = |d: &Headphones| if d.gamepad() { "PAD_DEVICE" } else { "DEVICE" };
+        let kind = |d: &Headphones| {
+            if d.gamepad() {
+                "PAD_DEVICE"
+            } else if d.kind.starts_with("audio-") {
+                "AUDIO_DEVICE"
+            } else {
+                "DEVICE"
+            }
+        };
         match self.page {
             Page::Home => {
                 let mut rows = vec![format!(
@@ -638,11 +743,6 @@ impl Manager {
                     format!("{}{} {}", if d.connected { "ACTIVE " } else { "" }, kind(d), d.name)
                 }));
                 rows.push("Pair new device".into());
-                rows.push(format!(
-                    "PAD_FACES {}",
-                    if self.pad_by_position { "Nintendo" } else { "Xbox" }
-                ));
-                rows.push("Test buttons".into());
                 rows
             }
             Page::Test => self.test_rows(),
@@ -686,14 +786,6 @@ impl Manager {
         }
     }
 
-    fn toggle_pad_faces(&mut self) {
-        let value = !self.pad_by_position;
-        match save_pad_faces(&self.root, value) {
-            Ok(()) => { self.pad_by_position = value; self.status.clear(); }
-            Err(_) => self.status = "Error: Could not save controller setting".into(),
-        }
-    }
-
     fn bluetooth_input(&mut self, action: Action) {
         let count = self.rows().len();
         let device = self
@@ -707,18 +799,9 @@ impl Manager {
             Action::GbaDown(Btn::A | Btn::Left | Btn::Right) if home && self.selected == 0 => {
                 self.toggle_bluetooth();
             }
-            Action::GbaDown(Btn::A | Btn::Left | Btn::Right) if home && self.selected == self.faces_row() => {
-                self.toggle_pad_faces();
-            }
             Action::GbaDown(Btn::A | Btn::Right) if home && self.selected == self.pair_row() => {
                 self.open(Page::Pair);
                 if !bluetooth_enabled(&self.root) { self.ask("on", None); }
-            }
-            Action::GbaDown(Btn::A | Btn::Right) if home && self.selected == self.test_row() => {
-                self.open(Page::Test);
-                self.test_held.clear();
-                self.test_b_since = None;
-                self.test_focus = 0;
             }
             _ if self.page == Page::Test => {}
             Action::GbaDown(Btn::X) if self.bluetooth_available => self.ask("diagnose", None),
@@ -891,15 +974,19 @@ impl Manager {
     }
     pub fn scroll_info(&self) -> (usize,usize,usize,usize) {
         let total=self.rows().len();
-        if self.testing() {return (self.test_focus,total,0,total.min(slot_ui::QUICK_VISIBLE));}
+        if self.testing() {return (0,total,0,total);}
         let visible=total.min(slot_ui::QUICK_VISIBLE);
         (self.selected,total,self.selected.saturating_sub(visible/2).min(total.saturating_sub(visible)),visible)
     }
-    pub fn page_key(&self) -> u64 { 1000 + self.page.clone() as u64 + if self.sound() { 0 } else { 10 } }
+    pub fn page_key(&self) -> u64 {
+        // the checker is a drawing, not a list: a key with no focus bar of its own
+        if self.testing() { return 4900; }
+        1000 + self.page.clone() as u64 + if self.sound() { 0 } else { 10 }
+    }
     pub fn lines(&self) -> Vec<String> {
         let title = if self.sound() { "" } else if self.testing() { "Test buttons" } else { "Bluetooth" };
         let message = if self.testing() {
-            "Hold B to go back".to_owned()
+            String::new()
         } else if self.forget_confirmation.is_some() {
             "CONFIRM_FORGET".to_owned()
         } else if self.recovering.load(Ordering::Relaxed) {
@@ -930,7 +1017,7 @@ impl Manager {
         for (i, row) in self.rows().iter().enumerate().skip(first).take(visible) {
             lines.push(format!(
                 "{}{}",
-                if self.testing() && self.test_row_held(i) || !self.testing() && i == self.selected {
+                if i == self.selected {
                     "SELECTED "
                 } else {
                     "ROW "
@@ -970,7 +1057,7 @@ impl Manager {
         let device_rows = self.device_start()..self.device_start() + self.device_indices().len();
         match self.page {
             Page::Test => "",
-            Page::Home if self.selected == 0 || self.selected == self.faces_row() => "B Back · Change",
+            Page::Home if self.selected == 0 => "B Back · Change",
             Page::Home if device_rows.contains(&self.selected) => "B Back · A Connect · Y Forget",
             Page::Pair if self.selected > 0 => "B Back · A Connect",
             _ => "B Back · A Select",
@@ -1234,6 +1321,18 @@ pub fn screen_face_without_switches(lines: &[String], footer_ink: [u8;3], canvas
     render_face(&lines,footer_ink,canvas,false)
 }
 fn render_face(lines: &[String], footer_ink: [u8;3], canvas:slot_ui::Canvas, switches: bool) -> UndoFace {
+    if let Some(state) = lines.iter().find_map(|l| l.strip_prefix("ROW TESTVIEW ").or_else(|| l.strip_prefix("SELECTED TESTVIEW "))) {
+        let mut words = state.splitn(3, ' ');
+        let controller = words.next() == Some("1");
+        let nintendo = words.next() == Some("1");
+        let (held, meanings) = words.next().unwrap_or("").split_once('|').unwrap_or(("", ""));
+        let list = |text: &'_ str| text.split(',').filter(|n| !n.is_empty()).map(str::to_owned).collect::<Vec<_>>();
+        let (held, meanings) = (list(held), list(meanings));
+        let held: Vec<&str> = held.iter().map(String::as_str).collect();
+        let meanings: Vec<&str> = meanings.iter().map(String::as_str).collect();
+        let view = slot_ui::ButtonTestView { controller, nintendo, held: &held, meanings: &meanings };
+        return slot_ui::button_test_face(&view, footer_ink, canvas);
+    }
     let screen_w=canvas.w.round() as u32;
     let rgba = vec![0u8; (screen_w * OUT_H * 4) as usize];
     let Some(font) = slot_ui::text::label_font() else {
@@ -1350,7 +1449,6 @@ fn render_face(lines: &[String], footer_ink: [u8;3], canvas:slot_ui::Canvas, swi
             .or_else(|| label.strip_prefix("PAUSE_DISCONNECT ").map(|v| ("Pause on disconnect", v)))
             .or_else(|| label.strip_prefix("BLUETOOTH ").map(|v| ("Bluetooth", v)))
             .or_else(|| label.strip_prefix("CAROUSEL_SOUNDS ").map(|v| ("Carousel sounds", v)))
-            .or_else(|| label.strip_prefix("PAD_FACES ").map(|v| ("Button layout", v)))
         {
             let name = slot_ui::quick_value_face(name, highlight);
             blit(&mut rgba, &name, slot_ui::QUICK_LABEL_X as u32 - slot_ui::MENU_PAD, top);
@@ -1395,11 +1493,13 @@ fn render_face(lines: &[String], footer_ink: [u8;3], canvas:slot_ui::Canvas, swi
         let speaker = label.starts_with("SPEAKER_DEVICE ");
         let pad = label.starts_with("PAD_DEVICE ");
         let tv = label.starts_with("HDMI_DEVICE ");
-        let device = usb || wired || speaker || pad || tv || label.starts_with("DEVICE ");
+        let audio = label.starts_with("AUDIO_DEVICE ");
+        let device = usb || wired || speaker || pad || tv || audio || label.starts_with("DEVICE ");
         let label = label
             .strip_prefix("DEVICE ")
             .or_else(|| label.strip_prefix("PAD_DEVICE "))
             .or_else(|| label.strip_prefix("HDMI_DEVICE "))
+            .or_else(|| label.strip_prefix("AUDIO_DEVICE "))
             .or_else(|| label.strip_prefix("USB_DEVICE "))
             .or_else(|| label.strip_prefix("WIRED_DEVICE "))
             .or_else(|| label.strip_prefix("SPEAKER_DEVICE "))
@@ -1423,7 +1523,7 @@ fn render_face(lines: &[String], footer_ink: [u8;3], canvas:slot_ui::Canvas, swi
                     slot_ui::Icon::Volume
                 } else if pad {
                     slot_ui::Icon::Gamepad
-                } else if usb || wired {
+                } else if usb || wired || audio {
                     slot_ui::Icon::Headphones
                 } else {
                     slot_ui::Icon::Bluetooth
@@ -1535,9 +1635,15 @@ mod menu_tests {
             view: View::Sound,
             pad_by_position: true,
             pairing_pad: None,
+            last_verb: "",
+            refreshed_at: None,
             test_held: Vec::new(),
             test_b_since: None,
-            test_focus: 0,
+            test_share_since: None,
+            test_menu_since: None,
+            test_now: 0,
+            test_controller: false,
+            closed: false,
             bluetooth_available: true,
             disconnect_volume: 0,
             current_volume:50,
@@ -1615,11 +1721,26 @@ mod menu_tests {
     }
 
     #[test]
+    fn earbuds_second_identity_is_not_listed_twice() {
+        let text = "DEVICE 0A:BB:CC:DD:EE:FF My earbuds\nSTATE 0A:BB:CC:DD:EE:FF yes no\nKIND 0A:BB:CC:DD:EE:FF audio-headphones\n\
+            DEVICE 5A:11:22:33:44:55 My earbuds\nSTATE 5A:11:22:33:44:55 no no\n\
+            DEVICE 11:22:33:44:55:66 Speaker\nSTATE 11:22:33:44:55:66 no no\n";
+        let devices = parse_devices(text);
+        let addresses: Vec<_> = devices.iter().map(|d| d.address.as_str()).collect();
+        assert_eq!(addresses, ["0A:BB:CC:DD:EE:FF", "11:22:33:44:55:66"], "an untyped device with its own name stays");
+        // while the second identity is the only one, or paired, it is listed
+        assert_eq!(parse_devices("DEVICE 5A:11:22:33:44:55 My earbuds\n").len(), 1);
+        let paired = text.replace("STATE 5A:11:22:33:44:55 no no", "STATE 5A:11:22:33:44:55 yes no");
+        assert_eq!(parse_devices(&paired).len(), 3);
+    }
+
+    #[test]
     fn error_pills_explain_the_reported_busy_and_unreachable_cases_concisely() {
         for (raw,want) in [
             ("Error: Connection failed: org.bluez.Error.Failed br-connection-busy","Bluetooth is busy. Wait a moment, then retry."),
             ("Error: Connection failed: org.bluez.Error.Failed br-connection-page-timeout","Device didn’t answer. Wake it and try again."),
             ("Error: Pairing failed: AuthenticationFailed","Pairing failed. Forget the device and pair again."),
+            ("Error: Pairing refused: put the device in pairing mode and try again","Pairing refused. Put the device in pairing mode."),
             ("Error: unknown raw details /mnt/sdcard/private.txt","Bluetooth failed. Turn it off and on, then retry."),
         ] {
             assert_eq!(error_notice(raw),want);assert!(want.chars().count()<=60);
@@ -1951,20 +2072,128 @@ mod menu_tests {
     }
 
     #[test]
-    fn the_checker_focus_follows_the_group_pressed_last() {
+    fn the_standalone_checker_closes_when_b_is_held() {
+        let mut m = Manager::button_test(PathBuf::new());
+        assert!(m.testing());
+        assert_eq!(m.page_key(), 4900, "no list focus bar over the drawing");
+        m.test_input(RawEvent::Down(Btn::A), 0);
+        m.test_extra("L↑", true);
+        assert!(m.lines().iter().any(|l| l.ends_with("TESTVIEW 0 1 A,LS up|A")), "{:?}", m.lines());
+        assert!(m.lines().last().unwrap().is_empty());
+        m.test_input(RawEvent::Down(Btn::B), 100);
+        m.test_tick(100 + TEST_LEAVE_MS - 1);
+        assert!(!m.closed);
+        m.test_tick(100 + TEST_LEAVE_MS);
+        assert!(m.closed);
+    }
+
+    #[test]
+    fn the_checker_says_what_a_controllers_extra_controls_do() {
+        let mut m = Manager::button_test(PathBuf::new());
+        m.test_tick(1000);
+        for (control, meaning) in [("R↑", "Vol+"), ("R↓", "Vol-"), ("R←", "Scaling Back"), ("R→", "Scaling Next"), ("L3", "Save State"), ("R3", "Load State")] {
+            m.test_extra(control, true);
+            assert_eq!(m.test_meanings(), [meaning], "{control}");
+            m.test_extra(control, false);
+        }
+        m.test_extra("L↑", true);
+        m.test_input(RawEvent::Down(Btn::Up), 1000);
+        assert_eq!(m.test_meanings(), ["Up"], "the left stick shows as the d-pad it steers");
+    }
+
+    #[test]
+    fn holding_share_in_the_checker_names_each_stage_of_the_power_button() {
+        let mut m = Manager::button_test(PathBuf::new());
+        m.test_tick(1000);
+        m.test_extra("Share", true);
+        assert_eq!(m.test_meanings(), ["Screenshot"]);
+        m.test_tick(1000 + crate::input::SHARE_POWER_MS);
+        assert_eq!(m.test_meanings(), ["Sleep"]);
+        m.test_tick(1000 + crate::input::SHARE_POWER_MS + slot_input::POWER_HOLD_MS);
+        assert_eq!(m.test_meanings(), ["Power Off"]);
+        m.test_extra("Share", false);
+        assert!(m.test_meanings().is_empty());
+        m.test_extra("Share", true);
+        assert_eq!(m.test_meanings(), ["Screenshot"], "a new press starts over");
+    }
+
+    #[test]
+    fn a_held_menu_ejects_and_both_volume_keys_mute() {
+        let mut m = Manager::button_test(PathBuf::new());
+        m.test_tick(1000);
+        m.test_input(RawEvent::Down(Btn::Menu), 1000);
+        assert_eq!(m.test_meanings(), ["Menu"]);
+        m.test_tick(1000 + slot_input::MENU_HOLD_MS);
+        assert_eq!(m.test_meanings(), ["Eject Game"]);
+        m.test_input(RawEvent::Up(Btn::Menu), 2500);
+        m.test_input(RawEvent::Down(Btn::VolUp), 2500);
+        assert_eq!(m.test_meanings(), ["Vol+"]);
+        m.test_input(RawEvent::Down(Btn::VolDown), 2500);
+        assert_eq!(m.test_meanings(), ["Mute"]);
+    }
+
+    #[test]
+    fn the_checker_saves_layout_and_drawing_choice_in_its_view() {
+        let mut m = Manager::button_test(PathBuf::new());
+        m.test_controller = true;
+        m.pad_by_position = false;
+        m.test_input(RawEvent::Down(Btn::Start), 0);
+        assert!(m.lines().iter().any(|l| l.ends_with("TESTVIEW 1 0 Start|Start")));
+        let face = screen_face_on(&m.lines(), [255, 255, 255], slot_ui::Canvas::FRAMED);
+        assert!(face.rgba.chunks_exact(4).any(|p| p[3] > 0), "the drawing is empty");
+    }
+
+    #[test]
+    fn headphones_show_as_headphones_in_the_bluetooth_tile() {
         let mut m = menu();
         m.view = View::Bluetooth;
-        m.selected = m.test_row();
-        m.input(Action::GbaDown(Btn::A));
-        assert!(m.testing());
-        assert_eq!(m.scroll_info(), (0, 5, 0, 5));
-        m.test_input(RawEvent::Down(Btn::L2), 0);
-        assert_eq!(m.scroll_info().0, 2);
-        m.test_input(RawEvent::Up(Btn::L2), 10);
-        assert_eq!(m.scroll_info().0, 2, "the bar stays on the last group");
-        m.test_extra("Share", true);
-        assert_eq!(m.scroll_info().0, 4);
-        assert!(m.lines().last().unwrap().is_empty(), "no button legends while every button is tested");
+        m.devices[0].kind = "audio-headset".into();
+        assert_eq!(m.rows()[1], "AUDIO_DEVICE WF-C510");
+    }
+
+    fn answer(m: &mut Manager, verb: &'static str, output: &str) {
+        let (tx, rx) = mpsc::channel();
+        tx.send(ResultMessage { devices: Some(m.devices.clone()), status: String::new(), output: Some(output.into()) }).unwrap();
+        m.pending = Some(rx);
+        m.last_verb = verb;
+        m.choosing_route = matches!(verb, "speaker" | "connect" | "off" | "usb" | "local");
+        m.poll();
+    }
+
+    #[test]
+    fn turning_bluetooth_off_leaves_the_selection_where_it_was() {
+        let mut m = menu();
+        m.view = View::Bluetooth;
+        m.devices.push(pad());
+        m.selected = 0;
+        answer(&mut m, "off", "speaker");
+        assert_eq!(m.selected, 0, "the switch row stays selected");
+        m.view = View::Sound;
+        m.selected = 0;
+        answer(&mut m, "speaker", "speaker");
+        assert_eq!(m.selected, m.local_row(), "Sound still moves to the output chosen");
+    }
+
+    #[test]
+    fn the_list_is_read_again_every_few_seconds_while_open_and_idle() {
+        let mut m = menu();
+        m.view = View::Bluetooth;
+        m.refresh();
+        assert!(m.busy(), "first look");
+        assert!(m.status.is_empty(), "silent: no spinner, no message");
+        m.cancel_pending();
+        m.status.clear();
+        m.refreshed_at = Some(std::time::Instant::now());
+        m.refresh();
+        assert!(!m.busy(), "not again within a few seconds");
+        m.refreshed_at = Some(std::time::Instant::now() - std::time::Duration::from_secs(4));
+        m.forget_confirmation = Some(m.devices[0].address.clone());
+        m.refresh();
+        assert!(!m.busy(), "never while a forget waits for its second Y");
+        m.forget_confirmation = None;
+        m.refresh();
+        assert!(m.busy());
+        assert!(!m.show_progress());
     }
 
     #[test]
@@ -1987,8 +2216,6 @@ mod menu_tests {
                 "DEVICE WF-C510",
                 "ACTIVE PAD_DEVICE Xbox Wireless Controller",
                 "Pair new device",
-                "PAD_FACES Nintendo",
-                "Test buttons",
             ]
         );
         assert_eq!(m.lines()[0], "Bluetooth");
@@ -2011,24 +2238,6 @@ mod menu_tests {
         m.input(Action::GbaDown(Btn::A));
         assert_eq!(m.status, "Connecting...");
         assert!(m.pairing_pad.is_none());
-    }
-
-    #[test]
-    fn the_controller_face_option_is_saved() {
-        let root = tempfile::tempdir().unwrap();
-        let mut m = menu();
-        m.view = View::Bluetooth;
-        m.root = root.path().to_owned();
-        m.pad_by_position = pad_faces_by_position(root.path());
-        assert!(m.pad_by_position, "the Nintendo layout is the default");
-        m.selected = m.faces_row();
-        assert!(m.lines().last().unwrap().contains("Change"));
-        m.input(Action::GbaDown(Btn::Right));
-        assert!(!m.pad_by_position);
-        assert!(!pad_faces_by_position(root.path()));
-        assert_eq!(m.rows()[m.faces_row()], "PAD_FACES Xbox");
-        m.input(Action::GbaDown(Btn::A));
-        assert!(pad_faces_by_position(root.path()));
     }
 
     #[test]
@@ -2299,10 +2508,10 @@ impl Events {
         let address = self.selection.clone();
         let (tx, rx) = mpsc::sync_channel(1);
         std::thread::spawn(move || {
-            let mut selected = false;
+            let mut watched = Watched::Nothing;
             for line in BufReader::new(stdout).lines() {
                 let Ok(line) = line else { break };
-                if connection_event(&line, &address, &mut selected) {
+                if connection_event(&line, &address, &mut watched) {
                     // Coalesce events; the authoritative property read follows.
                     let _ = tx.try_send(());
                 }
@@ -2329,24 +2538,57 @@ impl Drop for Events {
     }
 }
 
-fn connection_event(line: &str, address: &str, selected: &mut bool) -> bool {
+/// Which device's signal the listener is reading.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+enum Watched {
+    #[default]
+    Nothing,
+    /// The saved headphones: any change of their connection counts.
+    Saved,
+    /// Another device: only its connecting counts, since paired headphones taken out of their
+    /// case take over the sound (the helper checks they are headphones).
+    Other,
+    /// Another device's "Connected" property, whose value is on the next line.
+    OtherConnected,
+}
+
+fn connection_event(line: &str, address: &str, watched: &mut Watched) -> bool {
     if line.starts_with("signal ") {
-        let component = format!("/dev_{};", address.replace(':', "_"));
-        *selected = line
-            .to_ascii_uppercase()
-            .contains(&component.to_ascii_uppercase());
-        false
-    } else {
-        *selected && line.trim() == "string \"Connected\""
+        let line = line.to_ascii_uppercase();
+        let component = format!("/DEV_{};", address.replace(':', "_").to_ascii_uppercase());
+        *watched = if line.contains(&component) {
+            Watched::Saved
+        } else if line.contains("/DEV_") {
+            Watched::Other
+        } else {
+            Watched::Nothing
+        };
+        return false;
+    }
+    let connected = line.trim() == "string \"Connected\"";
+    match *watched {
+        Watched::Saved => connected,
+        Watched::Other if connected => {
+            *watched = Watched::OtherConnected;
+            false
+        }
+        Watched::OtherConnected => {
+            *watched = Watched::Other;
+            line.contains("boolean true")
+        }
+        _ => false,
     }
 }
 
-/// Retry only the saved choice. No discovery, new pairing, or UI-thread commands.
+/// Retry the saved choice, or follow other paired headphones that connected by themselves (the
+/// helper decides). No discovery, new pairing, or UI-thread commands.
 #[derive(Default)]
 pub struct Reconnect {
     checked: Option<std::time::Instant>,
-    pending: Option<Receiver<()>>,
+    pending: Option<Receiver<String>>,
     failures: u32,
+    /// Why the last automatic reconnect failed, as logged: each reason once, not every retry.
+    said: String,
 }
 
 impl Reconnect {
@@ -2355,13 +2597,23 @@ impl Reconnect {
     }
     pub fn poll(&mut self, root: &std::path::Path, connected: bool) {
         if let Some(rx) = &self.pending {
-            if !matches!(rx.try_recv(), Err(mpsc::TryRecvError::Empty)) {
-                self.pending = None;
+            match rx.try_recv() {
+                Err(mpsc::TryRecvError::Empty) => {}
+                outcome => {
+                    self.pending = None;
+                    let status = outcome.unwrap_or_default();
+                    let why = status.strip_prefix("Error: ").unwrap_or_default();
+                    if !why.is_empty() && why != self.said {
+                        eprintln!("slot: headphone reconnect: {why}");
+                    }
+                    self.said = why.to_owned();
+                }
             }
         }
         let now = std::time::Instant::now();
         if connected {
             self.failures = 0;
+            self.said.clear();
             self.checked = Some(now);
             return;
         }
@@ -2386,8 +2638,7 @@ impl Reconnect {
         let (tx, rx) = mpsc::channel();
         self.pending = Some(rx);
         std::thread::spawn(move || {
-            let _ = run(root, "reconnect", None);
-            let _ = tx.send(());
+            let _ = tx.send(run(root, "reconnect", None).status);
         });
     }
 }
@@ -2525,7 +2776,7 @@ mod indicator_tests {
     #[test]
     fn events_ignore_other_devices_and_unrelated_properties() {
         let address = "AA:BB:CC:DD:EE:FF";
-        let mut selected = false;
+        let mut selected = Watched::Nothing;
         assert!(!connection_event(
             "signal path=/org/bluez/hci1/dev_AA_BB_CC_DD_EE_FF; interface=x",
             address,
@@ -2551,6 +2802,13 @@ mod indicator_tests {
             address,
             &mut selected
         ));
+        // another device disconnecting is ignored, its connecting is not: other paired
+        // headphones taken out of their case take over the sound
+        assert!(!connection_event("      variant             boolean false", address, &mut selected));
+        assert!(!connection_event("   string \"Connected\"", address, &mut selected));
+        assert!(connection_event("      variant             boolean true", address, &mut selected));
+        assert!(!connection_event("signal path=/org/bluez/hci0; interface=x", address, &mut selected));
+        assert!(!connection_event("   string \"Connected\"", address, &mut selected));
     }
 
     #[test]

@@ -814,7 +814,8 @@ fn the_arrows_stand_only_around_the_selected_rows_value() {
     press(&mut a, Btn::B);
     press(&mut a,Btn::Right);
     press(&mut a, Btn::A);
-    for _ in 0..QuickRow::ClockFormat.position(&a.hidden_rows()) {
+    // a row near Date & Time, which stays in the window and is grey
+    for _ in 0..QuickRow::TimeZone.position(&a.hidden_rows()) {
         press(&mut a, Btn::Down);
     }
     let out = frame(&a);
@@ -1056,7 +1057,7 @@ fn no_row_in_hand_runs_its_arrows_into_its_label() {
             }
             open_at(&mut a, row);
             let out = frame(&a);
-            let [lx, _, lw, _] = placed(&out, if row==QuickRow::AutomaticTime {1000+row.index()}else{1100+row.index()}).expect("selected or disabled label");
+            let [lx, _, lw, _] = placed(&out, if matches!(row, QuickRow::AutomaticTime | QuickRow::PadLayout) {1000+row.index()}else{1100+row.index()}).expect("selected or disabled label");
             let label_ends = lx + lw - MENU_PAD as f32;
             if let Some([cx, ..]) = placed(&out, 300) {
                 assert!(
@@ -1668,9 +1669,11 @@ fn general_selection_stays_live_during_about_exit_and_rapid_navigation() {
     press(&mut a, Btn::A);
     a.update(0.06);
     press(&mut a, Btn::B);
-    press(&mut a, Btn::Up);
-    press(&mut a, Btn::Up);
-    a.update(0.0);
+    while a.quick_menu() != Some(QuickRow::DateTime) {
+        press(&mut a, Btn::Up);
+    }
+    // Date & Time is a scroll above About: let the window settle
+    a.update(1.0);
     assert_eq!(a.quick_menu(), Some(QuickRow::DateTime));
     let returning = frame(&a);
     assert!(drawn(&returning, label(QuickRow::DateTime, true)), "the returning General card retained a stale selection");
@@ -1682,8 +1685,9 @@ fn general_selection_stays_live_during_about_exit_and_rapid_navigation() {
     assert_eq!(clock_surface, returning_surface, "opening another page snapped the returning surface");
     press(&mut a, Btn::B);
     assert_eq!(a.quick_menu(), Some(QuickRow::DateTime));
-    press(&mut a, Btn::Down);
-    press(&mut a, Btn::Down);
+    while a.quick_menu() != Some(QuickRow::About) {
+        press(&mut a, Btn::Down);
+    }
     press(&mut a, Btn::A);
     assert!(matches!(a.phase(), Phase::About));
     a.update(1.0);

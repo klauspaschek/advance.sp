@@ -328,6 +328,14 @@ impl Session {
         self.act(action);
     }
 
+    /// A step of the screen size from a gamepad's right stick, while a game plays.
+    pub fn pad_picture(&mut self, larger: bool) {
+        if self.app.capturing() || self.app.literal_menu_buttons() || self.dozing() {
+            return;
+        }
+        self.app.step_picture(larger);
+    }
+
     pub fn is_dozing(&self) -> bool {
         self.dozing()
     }
@@ -460,11 +468,17 @@ impl Session {
             self.app.bluetooth_state(address.clone(), address.is_some());
             self.app.usb_state(usb, false);
         }
-        self.sink.hold_open(self.app.wired_audio_active());
+        // A headset whose volume slot set to silence (muted or 0%) keeps its stream: one whose
+        // stream stopped may not report its own buttons turning the volume up again.
+        let silent_headset = awake
+            && self.app.feedback_volume() == 0
+            && self.bluetooth_volume.linked(self.app.bluetooth_volume_address());
+        self.sink.hold_open(self.app.wired_audio_active() || silent_headset);
         if awake {
+            // muted is silence at the headset too, so its own buttons start from there
             if let Some(level) = self
                 .bluetooth_volume
-                .poll(self.app.bluetooth_volume_address(), self.app.volume())
+                .poll(self.app.bluetooth_volume_address(), self.app.feedback_volume())
             {
                 self.app.observe_bluetooth_volume(level);
             }

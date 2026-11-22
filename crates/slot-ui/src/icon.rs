@@ -138,6 +138,15 @@ pub fn status_icon_face(icon:Icon,ink:[u8;3])->CartFace {
     CartFace{rgba,w:24,h:24}
 }
 
+/// RetroAchievements syncing: a medal on two ribbons, a star cut out of it.
+pub fn achievement_badge_face(ink: [u8; 3]) -> CartFace {
+    let path = r#"<path fill-rule="evenodd" d="M5.5 1h4.5l3 6.5-3.2 2.2z M18.5 1h-4.5l-3 6.5 3.2 2.2z M12 8a7.5 7.5 0 1 0 0 15 7.5 7.5 0 0 0 0-15z M12 11.3l1.06 2.74 2.94.16-2.29 1.86.76 2.84L12 17.3l-2.47 1.6.76-2.84L8 14.2l2.94-.16z"/>"#;
+    let svg = format!(r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><g fill="#{:02x}{:02x}{:02x}" transform="translate(1 1) scale(.9167)">{path}</g></svg>"##, ink[0], ink[1], ink[2]);
+    let mut rgba = crate::art::render_svg(&svg, 24, 24).expect("badge vector");
+    for pixel in rgba.chunks_exact_mut(4) { pixel[..3].copy_from_slice(&ink); }
+    CartFace { rgba, w: 24, h: 24 }
+}
+
 /// Flat, antialiased control symbols with a common square box and stroke weight.
 /// Floating pills provide their own surface, so these need no glyph-font halo.
 pub fn control_icon_face(icon:Icon,size:u32,ink:[u8;3])->CartFace {

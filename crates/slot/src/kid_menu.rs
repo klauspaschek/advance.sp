@@ -162,7 +162,9 @@ impl Menu {
             if std::fs::remove_file(marker).is_err() {self.status="Could not change parent code mode".into();return;}
             self.use_device_pin=false;
         } else {
-            if !crate::network_vault::vault_path(&self.root).exists() {self.status="Set a Device code in General first".into();return;}
+            if !crate::network_vault::vault_path(&self.root).exists()
+                || crate::network_vault::method(&self.root) == Some(crate::network_vault::Method::NoCode)
+            {self.status="Set a Device code in General first".into();return;}
             if std::fs::create_dir_all(Policy::directory(&self.root)).and_then(|_|slot_store::atomic_write(&marker,b"1\n")).is_err() {self.status="Could not change parent code mode".into();return;}
             self.use_device_pin=true;
         }

@@ -21,8 +21,11 @@
 ### Menu changes from slot.sp
 
 - **Bluetooth** takes the place of *Parental controls* on the main menu. It holds the Bluetooth switch, every paired device (headphones and controllers, each with its icon) and **Pair new device**.
+- **Device controls** gains **Test buttons** (see [below](#bluetooth-controllers)), and its **In-Game** page opens on **Controller layout**: Nintendo or Xbox face buttons for a controller, greyed out until one is connected.
+- **General** is regrouped: Updates, then Date & Time, Automatic time, Time zone and Clock format together, then Device code, Parental controls and About.
+- **Device code** can be **No code**: Wi-Fi and RetroAchievements credentials are then saved without a code and open by themselves, with no prompt at startup (anyone holding the SD card could read them). With a code, **Startup access → Ask when needed** no longer asks at startup, only when Network, Wi-Fi, achievements or sharing first need it.
 - **Sound** keeps volume, the output choice (speaker, wired, Bluetooth or USB headphones) and the disconnect options. Headphones are paired in the Bluetooth tile.
-- **Parental controls** (kid mode) are unchanged and now live in **General**, above About.
+- **Parental controls** (kid mode) are unchanged and now live in **General**.
 
 ## Bluetooth controllers
 
@@ -34,7 +37,7 @@ The controller reconnects by itself whenever Bluetooth is on, and can join or le
 
 | Controller | On the RG SP |
 | :--- | :--- |
-| Face buttons | **Nintendo layout** by default: the right button is A and the top one X, as on the handheld. **Bluetooth → Button layout → Xbox** follows the printed letters instead. |
+| Face buttons | **Nintendo layout** by default: the right button is A and the top one X, as on the handheld. **Device controls → In-Game → Controller layout → Xbox** follows the printed letters instead. |
 | D-pad, left stick | D-pad |
 | LB / RB, LT / RT | L1 / R1, L2 / R2 |
 | View / Menu | Select / Start |
@@ -42,14 +45,14 @@ The controller reconnects by itself whenever Bluetooth is on, and can join or le
 | Share, tap | Screenshot |
 | Share, hold | The power button: let go to sleep, keep holding to save and power off |
 | L3 / R3 (sticks pressed in) | Save state / load state (both can be undone from the game menu) |
-| Right stick ← / → | Hold to rewind / fast-forward |
-| Right stick ↑ / ↓ | Next / previous shader |
+| Right stick ← / → | Screen size: the next smaller / larger (Actual, Stretch, Fit, Integer), in any game |
+| Right stick ↑ / ↓ | Volume up / down (held, it repeats like the volume keys) |
 
 Turning the controller on while the RG SP is in light sleep wakes the handheld, as a console does. A deep-sleeping or powered-off RG SP can only be woken by its own power button.
 
 The handheld's own buttons keep working alongside the controller, and any remapping in **Device controls** applies to both.
 
-**Bluetooth → Test buttons** checks every button of the handheld and of a controller: each group lights up and names the buttons held, and nothing else happens while it is open (the power button and the lid still work). Hold <kbd>B</kbd> for a second to go back.
+**Device controls → Test buttons** checks every button: a drawing of the RG SP, or of an Xbox controller once one is connected and pressed, lights up each button while it is held, with the sticks' directions and the names slot receives beneath. Nothing else happens while it is open (the power button and the lid still work). Hold <kbd>B</kbd> for a second to go back.
 
 <details>
 <summary><strong>Checking a new controller's buttons</strong></summary>

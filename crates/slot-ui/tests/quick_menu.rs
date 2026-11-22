@@ -86,11 +86,11 @@ fn the_rows_run_in_the_order_the_user_chose() {
     );
     assert_eq!(
         QuickRow::GENERAL.map(QuickRow::label),
-        ["Device code", "Updates", "Automatic time", "Time zone", "Clock format", "Date & Time", "Parental controls", "About"]
+        ["Updates", "Date & Time", "Automatic time", "Time zone", "Clock format", "Device code", "Parental controls", "About"]
     );
     assert_eq!(
         QuickRow::CONTROL_PAGES.map(QuickRow::label),
-        ["Shelf", "Shortcuts", "Buttons & Shortcuts", "In-Game"]
+        ["Shelf", "Shortcuts", "Buttons & Shortcuts", "In-Game", "Test buttons"]
     );
     assert_eq!(
         QuickRow::SHELF_KEYS.map(QuickRow::label),
@@ -170,7 +170,7 @@ fn the_rows_run_in_the_order_the_user_chose() {
             QuickRow::DisplaySchedule,
             QuickRow::Wifi,
             QuickRow::Achievements,
-            QuickRow::SecurityPin, QuickRow::Updates, QuickRow::TimeZone, QuickRow::CartStudio, QuickRow::PlayAchievements, QuickRow::Radio
+            QuickRow::SecurityPin, QuickRow::Updates, QuickRow::TimeZone, QuickRow::CartStudio, QuickRow::PlayAchievements, QuickRow::Radio, QuickRow::ButtonTest
         ]
     );
     for page in [
@@ -261,7 +261,7 @@ fn the_values_read_as_the_menu_prints_them() {
             "Neutral", "Warm 11%", "Warm 22%", "Warm 33%", "Warm 44%",
             "Warm 55%", "Warm 66%", "Warm 77%", "Warm 88%", "Warm 100%",
             "12-hour", "24-hour", "Classic", "Wheel",
-            "Actual", "Stretch", "Fit", "Integer", "Mix",
+            "Actual", "Stretch", "Fit", "Integer", "Mix", "Nintendo", "Xbox",
         ]
     );
     assert_eq!(QuickValue::flag(true), QuickValue::On);
@@ -493,7 +493,9 @@ fn appearance_options_share_the_display_page_and_return_to_its_tile() {
     assert_eq!(QuickRow::BootAnimation.parent(), Some(QuickRow::Power));
     assert_eq!(QuickRow::CarouselSounds.parent(), Some(QuickRow::Bluetooth));
     assert_eq!(QuickRow::SecurityPin.parent(), Some(QuickRow::General));
-    assert_eq!(QuickRow::General.child(),Some(QuickRow::SecurityPin));
+    assert_eq!(QuickRow::General.child(),Some(QuickRow::Updates));
+    assert_eq!(QuickRow::ButtonTest.parent(), Some(QuickRow::Controls));
+    assert_eq!(QuickRow::PadLayout.parent(), Some(QuickRow::ControlsInGame));
 }
 
 #[test]

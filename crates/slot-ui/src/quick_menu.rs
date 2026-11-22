@@ -127,6 +127,10 @@ pub enum QuickRow {
     PlayAchievements,
     /// The Bluetooth tile: the radio, every paired device and pairing.
     Radio,
+    /// General → Test buttons: the button checker.
+    ButtonTest,
+    /// Gameplay → Controller layout: a controller's face buttons on the Nintendo or Xbox layout.
+    PadLayout,
 }
 
 impl QuickRow {
@@ -136,7 +140,7 @@ impl QuickRow {
             | Self::LeftStick | Self::GbaColourCorrection | Self::GbColourCorrection
             | Self::GbcColourCorrection | Self::ColourCorrection | Self::Recents | Self::AutomaticTime)
     }
-    pub const ALL: [QuickRow; 115] = [
+    pub const ALL: [QuickRow; 117] = [
         QuickRow::FastForward,
         QuickRow::FastForwardSound,
         QuickRow::Screen,
@@ -252,6 +256,8 @@ impl QuickRow {
         QuickRow::CartStudio,
         QuickRow::PlayAchievements,
         QuickRow::Radio,
+        QuickRow::ButtonTest,
+        QuickRow::PadLayout,
     ];
 
 
@@ -274,24 +280,26 @@ impl QuickRow {
         QuickRow::ShutDown,
     ];
 
+    // updates, then the clock's settings together, then what is opened rarely
     pub const GENERAL: [QuickRow; 8] = [
-        QuickRow::SecurityPin,
         QuickRow::Updates,
+        QuickRow::DateTime,
         QuickRow::AutomaticTime,
         QuickRow::TimeZone,
         QuickRow::ClockFormat,
-        QuickRow::DateTime,
+        QuickRow::SecurityPin,
         QuickRow::Kids,
         QuickRow::About,
     ];
 
     pub const SOUND_OPTIONS: [QuickRow; 1] = [QuickRow::CarouselSounds];
 
-    pub const CONTROL_PAGES: [QuickRow; 4] = [
+    pub const CONTROL_PAGES: [QuickRow; 5] = [
         QuickRow::ControlsShelf,
         QuickRow::Shortcuts,
         QuickRow::Reference,
         QuickRow::ControlsInGame,
+        QuickRow::ButtonTest,
     ];
 
     pub const SHELF_KEYS: [QuickRow; 3] = [
@@ -300,7 +308,9 @@ impl QuickRow {
         QuickRow::ShelfFavorite,
     ];
 
-    pub const CONTROLS: [QuickRow; 12] = [
+    // a controller's layout first, then the game's buttons
+    pub const CONTROLS: [QuickRow; 13] = [
+        QuickRow::PadLayout,
         QuickRow::GameUp,
         QuickRow::GameDown,
         QuickRow::GameLeft,
@@ -447,7 +457,8 @@ impl QuickRow {
             | QuickRow::Theme | QuickRow::ShowTitles
             | QuickRow::CarouselMotion | QuickRow::Recents | QuickRow::FavoriteSort => &QuickRow::SCREEN,
             QuickRow::About | QuickRow::ClockFormat | QuickRow::DateTime | QuickRow::Kids => &QuickRow::GENERAL,
-            QuickRow::Reference | QuickRow::ControlsShelf | QuickRow::Shortcuts | QuickRow::ControlsInGame => {
+            QuickRow::PadLayout => &QuickRow::CONTROLS,
+            QuickRow::Reference | QuickRow::ControlsShelf | QuickRow::Shortcuts | QuickRow::ControlsInGame | QuickRow::ButtonTest => {
                 &QuickRow::CONTROL_PAGES
             }
             QuickRow::Resume
@@ -488,9 +499,9 @@ impl QuickRow {
             QuickRow::Achievements => Some(QuickRow::Game),
             QuickRow::PlayScreen => Some(QuickRow::Settings),
             QuickRow::PlayBrightness => Some(QuickRow::PlayScreen),
-            QuickRow::GameUp => Some(QuickRow::ControlsInGame),
+            QuickRow::PadLayout => Some(QuickRow::ControlsInGame),
             QuickRow::ScSave => Some(QuickRow::Shortcuts),
-            QuickRow::SecurityPin => Some(QuickRow::General),
+            QuickRow::Updates => Some(QuickRow::General),
             QuickRow::CarouselSounds => Some(QuickRow::Bluetooth),
             QuickRow::ControlsShelf => Some(QuickRow::Controls),
             QuickRow::ShelfPrev => Some(QuickRow::ControlsShelf),
@@ -566,6 +577,8 @@ impl QuickRow {
             QuickRow::Power => "Power & lid",
             QuickRow::Kids => "Parental controls",
             QuickRow::Radio => "Bluetooth",
+            QuickRow::ButtonTest => "Test buttons",
+            QuickRow::PadLayout => "Controller layout",
             QuickRow::LidClose => "Lid Close",
             QuickRow::SleepTimeout => "Shut Down After",
             QuickRow::SleepNow => "Sleep Now",
@@ -683,6 +696,7 @@ impl QuickRow {
             QuickRow::Power
                 | QuickRow::Kids
                 | QuickRow::Radio
+                | QuickRow::ButtonTest
                 | QuickRow::SleepNow
                 | QuickRow::ShutDown
                 | QuickRow::DateTime
@@ -857,10 +871,12 @@ pub enum QuickValue {
     Fit,
     Integer,
     Mix,
+    Nintendo,
+    Xbox,
 }
 
 impl QuickValue {
-    pub const ALL: [QuickValue; 67] = [
+    pub const ALL: [QuickValue; 69] = [
         QuickValue::Speed1_5,
         QuickValue::Speed2,
         QuickValue::Speed3,
@@ -928,6 +944,8 @@ impl QuickValue {
         QuickValue::Fit,
         QuickValue::Integer,
         QuickValue::Mix,
+        QuickValue::Nintendo,
+        QuickValue::Xbox,
     ];
 
     pub const LEVELS: [QuickValue; 10] = [
@@ -1026,6 +1044,8 @@ impl QuickValue {
             QuickValue::Fit => "Fit",
             QuickValue::Integer => "Integer",
             QuickValue::Mix => "Mix",
+            QuickValue::Nintendo => "Nintendo",
+            QuickValue::Xbox => "Xbox",
 
         }
     }
@@ -2068,7 +2088,8 @@ pub struct QuickScroll {
     pub thumb_h: f32,
 }
 
-fn visible(page: &[QuickRow]) -> usize { if page.first().is_some_and(|r|r.binds()){QUICK_VISIBLE-1}else{QUICK_VISIBLE} }
+// a page of bindings (the In-Game one opens on Controller layout) leaves room for their hint
+fn visible(page: &[QuickRow]) -> usize { if page.iter().any(|r|r.binds()){QUICK_VISIBLE-1}else{QUICK_VISIBLE} }
 
 pub fn quick_window(selected: QuickRow, hidden: &[QuickRow]) -> (usize, usize) {
     let count = selected.shown(hidden).len();
