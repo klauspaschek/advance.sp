@@ -41,13 +41,25 @@ pub fn run() {
         }
     };
     slot::boot_time::mark("compositor");
-    let panel = surface.window_size();
+    let framebuffer = surface.window_size();
+    // on a TV the framebuffer is 16:9 (hdmi.sh): slot still draws the handheld's 720x480
+    // screen, upright, and places it in the middle of the framebuffer each frame
+    let on_tv = slot::hdmi::active();
+    let panel = if on_tv {
+        (slot_gfx::OUT_W, slot_gfx::OUT_H)
+    } else {
+        framebuffer
+    };
     let env = |key| std::env::var(key).ok();
-    let turn = panel_turn(
-        panel,
-        slot::baseos::var("BASEOS_PANEL_ROTATION_CCW").as_deref(),
-        env("SLOT_ROTATE").as_deref(),
-    );
+    let turn = if on_tv {
+        PanelTurn::None
+    } else {
+        panel_turn(
+            panel,
+            slot::baseos::var("BASEOS_PANEL_ROTATION_CCW").as_deref(),
+            env("SLOT_ROTATE").as_deref(),
+        )
+    };
     let turned = turn != PanelTurn::None;
     let window = if turned { (panel.1, panel.0) } else { panel };
     eprintln!(
@@ -60,6 +72,12 @@ pub fn run() {
         "slot: panel {}x{}, canvas {}x{}, turn {turn:?}",
         panel.0, panel.1, window.0, window.1
     );
+    if on_tv {
+        eprintln!(
+            "slot: hdmi: framebuffer {}x{}, the screen centred in it",
+            framebuffer.0, framebuffer.1
+        );
+    }
     if turned {
         if let Err(e) = compositor.set_panel_turn(panel, turn == PanelTurn::Ccw) {
             eprintln!("slot: {e}");
@@ -85,6 +103,8 @@ pub fn run() {
     frontend.enable_boot_intro(&mut compositor);
     slot::boot_time::mark("bezel");
     let mut input = DeviceInput::open(&root);
+    let mut hotplug = slot::hdmi::Hotplug::default();
+    let started = Instant::now();
     slot::boot_time::mark("input");
     let card = root.clone();
     let _ = std::thread::Builder::new()
@@ -124,6 +144,16 @@ pub fn run() {
         if input.take_pad_arrival() && frontend.dozing() {
             input.press_power();
         }
+        // a cable in or out of the HDMI port: save, then run the launcher again in this process,
+        // which switches the output before the new slot draws
+        if hotplug.poll(started.elapsed().as_millis() as u64) && frontend.leave_for_cable() {
+            // as on a normal end: GL objects first, then the EGL surface and display
+            drop(compositor);
+            drop(surface);
+            let e = slot::hdmi::relaunch(&root, on_tv);
+            eprintln!("slot: hdmi: could not run the launcher again: {e}");
+            return;
+        }
         if frontend.restarting() {
             frontend.restart();
         }
@@ -151,6 +181,10 @@ pub fn run() {
             }
         }
 
+        if on_tv {
+            let fill = frontend.app().tv_fills_screen();
+            compositor.set_letterbox(Some(slot_gfx::letterbox(framebuffer, window, fill)));
+        }
         frontend.render(&mut compositor, window);
         let swap = Instant::now();
         if let Err(e) = surface.swap() {

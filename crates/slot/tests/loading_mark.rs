@@ -23,14 +23,25 @@ fn seated_in(root: &std::path::Path, stem: &str) {
 fn a_cart_that_took_slot_down_while_loading_comes_back_on_the_shelf() {
     let d = tmp_root_with_carts(&["Emerald", "Fusion"]);
     seated_in(d.path(), "Emerald");
-    persist::flush(d.path(), Platform::Gba, Core::Mgba, "Emerald", Some(&[5u8; 64]), None).unwrap();
+    persist::flush(
+        d.path(),
+        Platform::Gba,
+        Core::Mgba,
+        "Emerald",
+        Some(&[5u8; 64]),
+        None,
+    )
+    .unwrap();
     let run = tempfile::tempdir().unwrap();
     let mark = LoadingMark::in_dir(run.path());
     mark.set("Emerald");
 
     let a = App::boot_marked(d.path(), Some(mark.clone()));
 
-    assert!(matches!(a.phase(), Phase::Shelf), "the crashing cart was seated again");
+    assert!(
+        matches!(a.phase(), Phase::Shelf),
+        "the crashing cart was seated again"
+    );
     assert_eq!(mark.left(), None, "the mark outlived the boot it guarded");
     assert!(
         StateRing::new(d.path(), Platform::Gba, Core::Mgba, "Emerald")
@@ -86,4 +97,41 @@ fn without_a_mark_a_seated_cart_comes_back() {
     let a = App::boot_marked(d.path(), Some(LoadingMark::in_dir(run.path())));
 
     assert!(matches!(a.phase(), Phase::Inserting { .. }));
+}
+
+#[test]
+fn a_restart_for_the_hdmi_cable_is_no_crash_even_in_the_first_seconds_of_play() {
+    let d = tmp_root_with_carts(&["Emerald", "Fusion"]);
+    seated_in(d.path(), "Emerald");
+    let run = tempfile::tempdir().unwrap();
+    let mark = LoadingMark::in_dir(run.path());
+    let mut a = App::boot_marked(d.path(), Some(mark.clone()));
+    a.set_snapshot(common::StubSnapshot::boxed());
+    a.on_core_ready();
+    for _ in 0..120 {
+        a.update(1.0 / 60.0);
+    }
+    assert!(matches!(a.phase(), Phase::Playing { .. }));
+    assert!(mark.left().is_some(), "still in the first seconds of play");
+
+    assert!(a.leave_for_cable());
+    assert_eq!(
+        mark.left(),
+        None,
+        "the restart would look like a crash while loading"
+    );
+    drop(a);
+
+    let again = App::boot_marked(d.path(), Some(mark.clone()));
+    assert!(
+        matches!(again.phase(), Phase::Inserting { .. }),
+        "the game is not seated again"
+    );
+    assert!(
+        StateRing::new(d.path(), Platform::Gba, Core::Mgba, "Emerald")
+            .read_resume()
+            .unwrap()
+            .is_some(),
+        "the game's resume state was put aside"
+    );
 }

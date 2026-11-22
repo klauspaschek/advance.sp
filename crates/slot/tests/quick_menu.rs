@@ -1720,3 +1720,42 @@ fn passing_about_sticker_has_local_hint_contrast_without_a_permanent_footer_bar(
     a.update(1.0);
     assert!(!frame(&a).iter().any(backing), "the local backings should disappear once the sticker clears the footer");
 }
+
+// On a TV (HDMI) the Bezel setting picks from `Bezels/TV/<system>/`, kept apart from the
+// handheld's choice, and GBA gets the row too: its picture leaves the TV's sides free.
+#[test]
+fn on_a_tv_the_bezel_setting_picks_the_tvs_own_and_keeps_the_handhelds() {
+    let (d, mut a, _) = on_carousel();
+    std::fs::create_dir_all(d.path().join("Bezels/TV/GBA")).unwrap();
+    std::fs::create_dir_all(d.path().join("Bezels/TV/GBC")).unwrap();
+    std::fs::write(d.path().join("Bezels/TV/GBA/Advance.png"), b"png").unwrap();
+    std::fs::write(d.path().join("Bezels/GBC/Pocket.png"), b"png").unwrap();
+    std::fs::write(d.path().join("Bezels/TV/GBC/Color.png"), b"png").unwrap();
+    a.set_on_tv(true);
+    assert_eq!(a.resolved_bezel(Platform::Gba), BezelPick::None, "a TV starts without one");
+    open_at(&mut a, QuickRow::GbaBezel);
+    press(&mut a, Btn::Right);
+    assert_eq!(a.resolved_bezel(Platform::Gba), BezelPick::File("Advance.png".into()));
+    press(&mut a, Btn::Right);
+    assert_eq!(a.resolved_bezel(Platform::Gba), BezelPick::None, "switched off again");
+    press(&mut a, Btn::Right);
+    while a.quick_menu().is_some() {
+        press(&mut a, Btn::B);
+    }
+    open_at(&mut a, QuickRow::GbcBezel);
+    for want in [
+        BezelPick::Default,
+        BezelPick::File("Color.png".into()),
+    ] {
+        press(&mut a, Btn::Right);
+        assert_eq!(a.resolved_bezel(Platform::Gbc), want, "the handheld's file is no TV bezel");
+    }
+    let saved = read_slot_state(d.path());
+    assert_eq!(saved.tv_bezel_gba, BezelPick::File("Advance.png".into()));
+    assert_eq!(saved.tv_bezel_gbc, BezelPick::File("Color.png".into()));
+    assert_eq!(saved.bezel_gbc, SlotState::default().bezel_gbc, "the handheld's choice moved");
+    // back on the handheld, its own choice and files again
+    a.set_on_tv(false);
+    assert_eq!(a.resolved_bezel(Platform::Gbc), BezelPick::None);
+    assert_eq!(a.tv_bezel(), None);
+}

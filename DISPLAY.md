@@ -116,6 +116,14 @@ For a custom game border, put a PNG in `Bezels/GB/`, `Bezels/GBC/` or `Bezels/GB
 
 On a 640 × 480 display, the GBA picture is 640 × 427 at x=0, y=27. On a 720 × 480 display, GBA fills the screen. Borders are hidden in Stretch, Fit and Integer modes.
 
+On a TV (HDMI), **Bezel** chooses from a separate set: 16:9 PNGs in `Bezels/TV/GBA/`, `Bezels/TV/GB/` or `Bezels/TV/GBC/`, remembered apart from the handheld's choice. The image is scaled to the whole TV and covers everything except the game's picture, so it never hides the game, whatever its transparency. It shows only while a game is on screen, not in menus or with Stretch. The picture area on the TV, out of 1920 × 1080:
+
+| Game | Picture area |
+| :--- | :--- |
+| GBA (Actual, Fit, Integer) | 1630 × 1080, starting at x=145, y=0. |
+| GB/GBC (Actual, Integer) | 1087 × 972, starting at x=417, y=54. |
+| GB/GBC (Fit) | 1208 × 1080, starting at x=355, y=0. |
+
 <details>
 <summary><strong>Use a custom startup image</strong></summary>
 

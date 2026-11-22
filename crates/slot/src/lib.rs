@@ -63,6 +63,7 @@ pub mod video_mode;
 pub mod wallpaper;
 
 pub mod bluetooth;
+pub mod hdmi;
 mod bluetooth_volume;
 pub mod usb_audio;
 

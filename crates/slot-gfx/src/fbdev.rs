@@ -94,6 +94,16 @@ fn visible_size() -> Option<(u32, u32)> {
     }
 }
 
+/// The environment variable the launcher sets to the framebuffer's size (`720x480`) when the
+/// HDMI transmitter has the output.
+pub const FB_SIZE_ENV: &str = "SLOT_FB_SIZE";
+
+pub fn fb_size_override(text: &str) -> Option<(u32, u32)> {
+    let (w, h) = text.trim().split_once('x')?;
+    let (w, h) = (w.trim().parse().ok()?, h.trim().parse().ok()?);
+    ((1..=4096).contains(&w) && (1..=4096).contains(&h)).then_some((w, h))
+}
+
 pub fn panel_mode(text: &str) -> Option<(u32, u32)> {
     let body = text.lines().next()?.rsplit(':').next()?;
     let (w, rest) = body.split_once('x')?;
@@ -155,16 +165,23 @@ impl Egl {
 
 impl FbdevSurface {
     pub fn new() -> Result<Self, GfxError> {
+        crate::hdmi_layer::settle();
         let attr = |name: &str| std::fs::read_to_string(format!("{FB0}/{name}")).ok();
-        let hint = attr("mode")
-            .as_deref()
-            .and_then(panel_mode)
+        // on HDMI the launcher names the framebuffer's size: the mode attributes may describe
+        // the TV's signal instead
+        let hint = std::env::var(FB_SIZE_ENV).ok().as_deref().and_then(fb_size_override)
+            .or_else(|| attr("mode").as_deref().and_then(panel_mode))
             .or_else(|| attr("modes").as_deref().and_then(panel_mode))
             .or_else(visible_size)
             .or_else(|| attr("virtual_size").as_deref().and_then(panel_size))
             .unwrap_or(FALLBACK_PANEL);
         eprintln!("slot: fb0 hint {}x{}", hint.0, hint.1);
-        FbdevSurface::open(hint)
+        let surface = FbdevSurface::open(hint);
+        if surface.is_ok() {
+            // the driver may put the LCD's layer back as the surface comes up
+            crate::hdmi_layer::settle_later();
+        }
+        surface
     }
 
     fn open(hint: (u32, u32)) -> Result<Self, GfxError> {
