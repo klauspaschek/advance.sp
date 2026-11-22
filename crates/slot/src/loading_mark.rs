@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 pub const RUN_VAR: &str = "SLOT_RUN";
-const MARK: &str = "slot-loading";
+const MARK: &str = "advance-loading";
 
 #[derive(Clone, Debug)]
 pub struct LoadingMark(PathBuf);
@@ -17,7 +17,7 @@ impl LoadingMark {
 
     pub fn set(&self, stem: &str) {
         if let Err(e) = std::fs::write(&self.0, stem) {
-            eprintln!("slot: loading mark: {}: {e}", self.0.display());
+            eprintln!("advance: loading mark: {}: {e}", self.0.display());
         }
     }
 

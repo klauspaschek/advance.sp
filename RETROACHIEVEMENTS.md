@@ -94,8 +94,8 @@ are not proof of server acceptance. The implementation always submits softcore a
 
 ## Install and test
 
-Download the `slot.sp-network-System` artifact from the PR's **Network and achievements
-test build** workflow. Extract it, then extract `slot.sp-network-System.zip` and copy
+Download the `advance.sp-network-System` artifact from the PR's **Network and achievements
+test build** workflow. Extract it, then extract `advance.sp-network-System.zip` and copy
 its System folder over the card's System folder. Back up the card first. This is a
 manual PR build, not a published release or automatic update.
 

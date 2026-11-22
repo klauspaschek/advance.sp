@@ -39,6 +39,6 @@ fn recency_uses_session_order_even_if_the_clock_moves_backward() {
 #[test]
 fn malformed_history_is_reported_without_altering_the_file() {
     let d=tempfile::tempdir().unwrap();std::fs::create_dir(d.path().join("Config")).unwrap();
-    let path=d.path().join("Config/play-history.txt");let text="slot-play-history-v1\nGB\tzz\t2\t0\t1\n";std::fs::write(&path,text).unwrap();
+    let path=d.path().join("Config/play-history.txt");let text="advance-play-history-v1\nGB\tzz\t2\t0\t1\n";std::fs::write(&path,text).unwrap();
     assert!(PlayHistory::read(d.path()).is_err());assert_eq!(std::fs::read_to_string(path).unwrap(),text);
 }

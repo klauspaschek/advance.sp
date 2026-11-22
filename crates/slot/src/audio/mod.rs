@@ -24,7 +24,7 @@ pub const OUTPUT_HZ: u32 = 48_000;
 pub fn opened_sink() -> Box<dyn AudioSink> {
     let mut sink = open_sink();
     if let Err(e) = sink.open(OUTPUT_HZ) {
-        eprintln!("slot: audio: {e}");
+        eprintln!("advance: audio: {e}");
     }
     sink
 }

@@ -8,7 +8,7 @@ pub const USER_LOGO: &str = "Config/bootlogo.bmp";
 const LOGO: &str = "bootlogo.bmp";
 const ORIGINAL: &str = "bootlogo.baseos.bmp";
 const PARTITION: &str = "boot-resource";
-const MOUNT: &str = "/tmp/slot-boot-resource";
+const MOUNT: &str = "/tmp/advance-boot-resource";
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum Outcome {
@@ -254,7 +254,7 @@ pub fn chosen(card: &Path) -> Option<Logo> {
     }
     let shipped = fs::read(card.join(CARD_LOGO)).ok()?;
     if decode(&shipped).is_none() {
-        eprintln!("slot: bootlogo: {CARD_LOGO} is not a 24-bit bmp, skipping it");
+        eprintln!("advance: bootlogo: {CARD_LOGO} is not a 24-bit bmp, skipping it");
         return None;
     }
     Some(Logo::Wordmark(shipped))
@@ -265,29 +265,29 @@ pub fn refresh(card: &Path) {
         return;
     };
     let Some(device) = partition(PARTITION) else {
-        eprintln!("slot: bootlogo: no {PARTITION} partition");
+        eprintln!("advance: bootlogo: no {PARTITION} partition");
         return;
     };
     if fs::create_dir_all(MOUNT).is_err()
         || !run("mount", &["-t", "vfat", "-o", "ro,noatime", &device, MOUNT])
     {
-        eprintln!("slot: bootlogo: could not mount {device}");
+        eprintln!("advance: bootlogo: could not mount {device}");
         return;
     }
     match pending(&logo, Path::new(MOUNT)) {
-        Some(Outcome::Invalid) => eprintln!("slot: bootlogo: no logo fits this panel, left alone"),
+        Some(Outcome::Invalid) => eprintln!("advance: bootlogo: no logo fits this panel, left alone"),
         Some(_) => {}
         None if !run("mount", &["-o", "remount,rw,noatime", MOUNT]) => {
-            eprintln!("slot: bootlogo: could not remount {device} to write the logo")
+            eprintln!("advance: bootlogo: could not remount {device} to write the logo")
         }
         None => match install(&logo, Path::new(MOUNT)) {
-            Ok(Outcome::Installed) => eprintln!("slot: bootlogo: installed"),
+            Ok(Outcome::Installed) => eprintln!("advance: bootlogo: installed"),
             Ok(_) => {}
-            Err(e) => eprintln!("slot: bootlogo: {e}"),
+            Err(e) => eprintln!("advance: bootlogo: {e}"),
         },
     }
     if !run("umount", &[MOUNT]) {
-        eprintln!("slot: bootlogo: could not unmount {MOUNT}");
+        eprintln!("advance: bootlogo: could not unmount {MOUNT}");
     }
 }
 

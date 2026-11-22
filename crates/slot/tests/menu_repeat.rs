@@ -20,7 +20,7 @@ fn on_shelf(stems: &[&str]) -> (TempDir, App) {
             ..SlotState::default()
         },
     )
-    .expect("write slot.state");
+    .expect("write advance.state");
     let (mut a, _) = app_booting_at(d.path(), CLOCK_IS_SET);
     assert!(matches!(a.phase(), Phase::Shelf), "{:?}", a.phase());
     a.tick_ms(T - 1_000);

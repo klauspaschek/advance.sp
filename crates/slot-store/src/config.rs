@@ -10,7 +10,9 @@ const MOVED: [&str; 4] = [
     "cart_shell.ini",
 ];
 
-const RENAMED: [(&str, &str); 4] = [
+const RENAMED: [(&str, &str); 5] = [
+    // advance.sp was slot.sp: its settings keep their contents under the new name.
+    ("Config/slot.state", "Config/advance.state"),
     ("Config/selected_core.ini", crate::SELECTED_CORE_FILE),
     ("Config/video_mode.ini", "Config/video_mode.txt"),
     ("Config/cart_shell.ini", crate::CART_SHELL_FILE),

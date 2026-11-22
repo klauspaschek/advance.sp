@@ -16,7 +16,7 @@ fn boot(root: &Path, stick: bool) -> App {
             ..SlotState::default()
         },
     )
-    .expect("write slot.state");
+    .expect("write advance.state");
     let (mut a, _) = app_booting_at(root, CLOCK_IS_SET);
     a.set_left_stick(stick);
     a

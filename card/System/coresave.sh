@@ -15,13 +15,13 @@ mkdir -p "$DIR" 2>/dev/null
 echo "$(date '+%F %T') pid=$1 signal=$2 thread=$3 exe=$exe" >> "$DIR/cores.log"
 
 case "$exe ${cmd% }" in
-*/slot|*/slot\ *)
-	cp "/proc/$1/maps" "$DIR/slot.maps" 2>/dev/null
-	cp "$SD/Logs/slot.log" "$DIR/slot-$(date '+%F_%H-%M-%S').log" 2>/dev/null
-	ls -1 "$DIR" | grep '^slot-.*\.log$' | sort -r | tail -n +"$((KEEP + 1))" | while read -r old; do
+*/advance|*/advance\ *)
+	cp "/proc/$1/maps" "$DIR/advance.maps" 2>/dev/null
+	cp "$SD/Logs/advance.log" "$DIR/advance-$(date '+%F_%H-%M-%S').log" 2>/dev/null
+	ls -1 "$DIR" | grep '^advance-.*\.log$' | sort -r | tail -n +"$((KEEP + 1))" | while read -r old; do
 		rm -f "$DIR/$old"
 	done
-	rm -f "$DIR/slot.core"
+	rm -f "$DIR/advance.core"
 	;;
 esac
 cat > /dev/null

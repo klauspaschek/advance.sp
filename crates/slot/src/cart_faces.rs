@@ -47,10 +47,10 @@ impl CartFaces {
         for n in 0..WORKERS {
             let (queue, outbox, root) = (queue.clone(), outbox.clone(), root.clone());
             let spawned = thread::Builder::new()
-                .name(format!("slot-carts-{n}"))
+                .name(format!("advance-carts-{n}"))
                 .spawn(move || work(&queue, &outbox, &root));
             if let Err(e) = spawned {
-                eprintln!("slot: cart faces: worker thread failed to start: {e}");
+                eprintln!("advance: cart faces: worker thread failed to start: {e}");
             }
         }
         CartFaces {

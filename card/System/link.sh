@@ -4,8 +4,8 @@ set -u
 NET="${AGS_NET_SYS:-/sys/class/net}"
 RUN="${AGS_RUN:-/run}"
 
-LINK_SSID="${AGS_LINK_SSID:-slotlink}"
-LINK_PSK="${AGS_LINK_PSK:-slotlink0}"
+LINK_SSID="${AGS_LINK_SSID:-advance-link}"
+LINK_PSK="${AGS_LINK_PSK:-advance-link0}"
 LINK_FREQ="${AGS_LINK_FREQ:-5745}"
 LINK_HOST_IP="${AGS_LINK_HOST_IP:-10.42.0.1/24}"
 LINK_PEER_IP="${AGS_LINK_PEER_IP:-10.42.0.2/24}"
@@ -14,7 +14,7 @@ LINK_PIN_WAIT_S="${AGS_LINK_PIN_WAIT_S:-20}"
 LINK_RESCAN="${AGS_LINK_RESCAN:-2}"
 LINK_AP_GLOBAL="${AGS_LINK_AP_GLOBAL:-}"
 LINK_TRACE="${AGS_LINK_TRACE:-}"
-LINK_MARK="$RUN/slotlink.session"
+LINK_MARK="$RUN/advance-link.session"
 
 WPA_SUPPLICANT="${AGS_WPA_SUPPLICANT:-wpa_supplicant}"
 WPA_CLI="${AGS_WPA_CLI:-wpa_cli}"
@@ -24,7 +24,7 @@ CTRL_DIR="${AGS_CTRL_DIR:-/var/run/wpa_supplicant}"
 
 trace() {
 	[ -n "$LINK_TRACE" ] || return 0
-	echo "slotlink: $(cut -d' ' -f1 "$UPTIME" 2>/dev/null) $*" >> "$LINK_TRACE" 2>/dev/null
+	echo "advance-link: $(cut -d' ' -f1 "$UPTIME" 2>/dev/null) $*" >> "$LINK_TRACE" 2>/dev/null
 	return 0
 }
 
@@ -61,11 +61,11 @@ supplicant_stop() {
 link_clear() {
 	supplicant_stop "$RUN/wpa_ap" wlan1
 	$IP addr flush dev wlan1 2>/dev/null || true
-	/bin/rm -f "$RUN/slotlink-ap.conf"
-	if [ -f "$RUN/slotlink-sta.conf" ]; then
+	/bin/rm -f "$RUN/advance-link-ap.conf"
+	if [ -f "$RUN/advance-link-sta.conf" ]; then
 		supplicant_stop "$CTRL_DIR" wlan0
 		$IP addr flush dev wlan0 2>/dev/null || true
-		/bin/rm -f "$RUN/slotlink-sta.conf"
+		/bin/rm -f "$RUN/advance-link-sta.conf"
 	fi
 }
 
@@ -117,11 +117,11 @@ link_host() {
 		echo '	pairwise=CCMP'
 		echo "	psk=\"$LINK_PSK\""
 		echo '}'
-	} > "$RUN/slotlink-ap.conf"
-	/bin/chmod 600 "$RUN/slotlink-ap.conf"
+	} > "$RUN/advance-link-ap.conf"
+	/bin/chmod 600 "$RUN/advance-link-ap.conf"
 
 	$IP link set wlan1 up 2>/dev/null || true
-	$WPA_SUPPLICANT -B -i wlan1 -c "$RUN/slotlink-ap.conf" -Dnl80211 >/dev/null 2>&1 || return 1
+	$WPA_SUPPLICANT -B -i wlan1 -c "$RUN/advance-link-ap.conf" -Dnl80211 >/dev/null 2>&1 || return 1
 	link_wait "$RUN/wpa_ap" wlan1 "$LINK_WAIT_S" 0 "" || return 1
 	$IP addr add "$LINK_HOST_IP" dev wlan1 2>/dev/null || true
 	trace "host: addressed"
@@ -139,8 +139,8 @@ link_sta_conf() {
 			echo "	freq_list=$1"
 		fi
 		echo '}'
-	} > "$RUN/slotlink-sta.conf"
-	/bin/chmod 600 "$RUN/slotlink-sta.conf"
+	} > "$RUN/advance-link-sta.conf"
+	/bin/chmod 600 "$RUN/advance-link-sta.conf"
 }
 
 link_join() {
@@ -164,7 +164,7 @@ link_join() {
 		fi
 		link_sta_conf "$freq"
 		supplicant_stop "$CTRL_DIR" wlan0
-		$WPA_SUPPLICANT -B -i wlan0 -c "$RUN/slotlink-sta.conf" -Dnl80211 >/dev/null 2>&1 \
+		$WPA_SUPPLICANT -B -i wlan0 -c "$RUN/advance-link-sta.conf" -Dnl80211 >/dev/null 2>&1 \
 			|| { attempt=$((attempt + 1)); continue; }
 		trace "join: attempt $attempt on ${freq:-every channel}"
 		if link_wait "$CTRL_DIR" wlan0 "$bound" "$LINK_RESCAN" "$freq"; then
@@ -195,13 +195,13 @@ link_warm() {
 }
 
 case "${1:-} ${2:-}" in
-"link host") /bin/sh "$(dirname "$0")/slotwifi.sh" down; link_host ;;
-"link join") /bin/sh "$(dirname "$0")/slotwifi.sh" down; link_join ;;
+"link host") /bin/sh "$(dirname "$0")/wifi.sh" down; link_host ;;
+"link join") /bin/sh "$(dirname "$0")/wifi.sh" down; link_join ;;
 "link down") link_down ;;
 "link warm") link_warm ;;
 "link cool") exit 0 ;;
 *)
-	echo "usage: slotlink.sh link [host|join|down|warm|cool]" >&2
+	echo "usage: link.sh link [host|join|down|warm|cool]" >&2
 	exit 2
 	;;
 esac

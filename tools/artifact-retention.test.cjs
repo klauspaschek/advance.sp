@@ -33,7 +33,7 @@ test('a newer successful PR check cannot delete the bundle needed to retry a fai
  assert(selected.every(a=>a.reason==='older than 24 hours'));
 });
 test('only matching complete published releases make fresh build downloads redundant',()=>{
- const assets=['slot.sp-System.zip','slot.sp-SD2.zip','SHA256SUMS','build-info.json'].map(name=>({name,size:1}));
+ const assets=['advance.sp-System.zip','advance.sp-SD2.zip','SHA256SUMS','build-info.json'].map(name=>({name,size:1}));
  const release={draft:false,tag_name:'build-2026.10.30-abcdef0',target_commitish:'main',assets};
  assert.ok(completeRelease(release));assert.ok(!completeRelease({...release,assets:assets.slice(1)}));
  assert.ok(!completeRelease({...release,draft:true}));
@@ -54,7 +54,7 @@ test('keep the newest successful workflow set even when ZIP names change',()=>{
 test('PR-only workflows and superseded PR builds stay for their first 24 hours',()=>{
  const path='.github/workflows/build.yml';
  const prOnly='.github/workflows/network-review.yml';
- const items=[artifact(1,'slot.sp-network-System',1000),artifact(2,'old-pr-build',2000),artifact(3,'new-pr-build',1000),artifact(4,'old-pr-build',DAY),artifact(5,'target-pr-build',1000)];
+ const items=[artifact(1,'advance.sp-network-System',1000),artifact(2,'old-pr-build',2000),artifact(3,'new-pr-build',1000),artifact(4,'old-pr-build',DAY),artifact(5,'target-pr-build',1000)];
  const runs=new Map([
   finished(1,{id:1,path:prOnly,event:'pull_request'}),
   finished(2,{id:2,path,event:'pull_request'}),

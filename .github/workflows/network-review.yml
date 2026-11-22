@@ -1,7 +1,7 @@
 name: Network and achievements test build
 on:
   pull_request:
-    paths: ['card/System/slotupdate.sh', 'card/test-update.sh', 'card/test-launch.sh', 'card/test-ota-recovery.py', 'crates/**', 'card/System/slotwifi.sh', 'card/test-wifi-diagnostics.py', 'card/System/slotlink.sh', 'card/System/slotsmb.sh', 'card/test-smb*', 'tools/*samba*', 'taskfile.yml', '.github/workflows/network-review.yml']
+    paths: ['card/System/update.sh', 'card/test-update.sh', 'card/test-launch.sh', 'card/test-ota-recovery.py', 'crates/**', 'card/System/wifi.sh', 'card/test-wifi-diagnostics.py', 'card/System/slotlink.sh', 'card/System/slotsmb.sh', 'card/test-smb*', 'tools/*samba*', 'taskfile.yml', '.github/workflows/network-review.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -79,7 +79,7 @@ jobs:
           cargo test --locked -p slot-achievements -p slot-retro --lib
           cargo test --locked -p slot --no-default-features --lib --test studio_state --test device_studio_sharing --test sleep --test power --test quick_menu --test in_game_menu --test settings_notices --test emu --test kid_controls --test parent_code --test fork_updates --test net_time --test sntp -- --test-threads=1
           cargo test --locked -p slot-ui --lib --test quick_menu
-          sh card/test-slotlink.sh
+          sh card/test-link.sh
           python3 card/test-ota-recovery.py
           sh card/test-update.sh
           sh card/test-launch.sh
@@ -92,13 +92,13 @@ jobs:
       - name: Package test build
         run: |
           python3 tools/package-release.py dist-network network-assets "$GITHUB_SHA"
-          mv network-assets/slot.sp-System.zip slot.sp-network-System.zip
-          mv network-assets/slot.sp-network-sources.zip .
+          mv network-assets/advance.sp-System.zip advance.sp-network-System.zip
+          mv network-assets/advance.sp-network-sources.zip .
       - uses: actions/upload-artifact@v7
         with:
-          name: slot.sp-network-System
+          name: advance.sp-network-System
           retention-days: 1
           path: |
-            slot.sp-network-System.zip
-            slot.sp-network-sources.zip
+            advance.sp-network-System.zip
+            advance.sp-network-sources.zip
           if-no-files-found: error

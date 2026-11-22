@@ -39,10 +39,10 @@ while IFS= read -r f; do
     case "$f" in
         ""|/*|..|../*|*/../*|*/..|.|./*|*/./*|*/.|*//*|*/|*\\*) say "UPDATE INVALID"; exit 1 ;;
     esac
-    regular_path "$NEW" "$f" && regular_path "$SYS" "$f" && regular_path "$SYS" "$f.slot-update" || { say "UPDATE INVALID PATH"; exit 1; }
+    regular_path "$NEW" "$f" && regular_path "$SYS" "$f" && regular_path "$SYS" "$f.advance-update" || { say "UPDATE INVALID PATH"; exit 1; }
     [ -f "$NEW/$f" ] && [ ! -L "$NEW/$f" ] || { say "UPDATE INCOMPLETE"; exit 1; }
 done < "$NEW/.manifest"
-for f in slot launch_frontend.sh mgba_libretro.so gpsp_libretro.so build-info.json; do
+for f in advance launch_frontend.sh mgba_libretro.so gpsp_libretro.so build-info.json; do
     grep -qxF "$f" "$NEW/.manifest" || { say "UPDATE INCOMPLETE"; exit 1; }
 done
 # Make the complete recovery source durable before replacing installed files.
@@ -51,14 +51,14 @@ say "UPDATING ADVANCE.SP"
 put() {
     # put is called in an OR-list: errexit does not guard commands in here.
     mkdir -p "$(dirname "$SYS/$1")" || return 1
-    rm -f "$SYS/$1.slot-update" || return 1
-    cp -p "$NEW/$1" "$SYS/$1.slot-update" && mv -f "$SYS/$1.slot-update" "$SYS/$1"
+    rm -f "$SYS/$1.advance-update" || return 1
+    cp -p "$NEW/$1" "$SYS/$1.advance-update" && mv -f "$SYS/$1.advance-update" "$SYS/$1"
 }
 while IFS= read -r f; do
-    case "$f" in slot|launch_frontend.sh) continue ;; esac
+    case "$f" in advance|launch_frontend.sh) continue ;; esac
     put "$f" || { say "UPDATE FAILED - RESTART TO RETRY"; exit 1; }
 done < "$NEW/.manifest"
-for f in slot launch_frontend.sh; do
+for f in advance launch_frontend.sh; do
     put "$f" || { say "UPDATE FAILED - RESTART TO RETRY"; exit 1; }
 done
 sync

@@ -351,7 +351,7 @@ impl Menu {
         self.badge_reply = None;
         if let Some(path) = notice.badge.filter(|_| self.prefs.achievement_artwork) {
             let (send, receive) = std::sync::mpsc::channel();
-            if std::thread::Builder::new().name("slot-ra-notice".into()).spawn(move || {
+            if std::thread::Builder::new().name("advance-ra-notice".into()).spawn(move || {
                 let _ = send.send(slot_achievements::load_badge(&path));
             }).is_ok() { self.badge_reply = Some((id, receive)); }
         }
@@ -892,7 +892,7 @@ impl Menu {
                 ("Sharing".into(),if self.sharing.view.busy {"Working…"}else if self.sharing.view.active {"On"}else{"Off"}.into(),true),
                 ("Keep on after reboot".into(),if self.prefs.sharing_keep {"On"}else{"Off"}.into(),true),
                 (String::new(),self.last_wifi.ip.as_ref().map(|ip|format!("smb://{ip}/SDCard")).unwrap_or_else(||"Not connected".into()),false),
-                ("Username".into(),"slot".into(),false),
+                ("Username".into(),"advance".into(),false),
                 ("Password".into(), if self.locked { "Locked".into() }
                     else if self.secrets.sharing_password.is_empty() { "Not set".into() }
                     else if self.sharing_reveal { self.secrets.sharing_password.clone() }

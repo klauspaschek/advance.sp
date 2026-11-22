@@ -127,7 +127,7 @@ pub struct Notice {
 impl Notice {
     fn status(generation: u64, title: &str) -> Self {
         // Background diagnostics only; routine status is represented by the shelf icon.
-        eprintln!("slot: {title}");
+        eprintln!("advance: {title}");
         Self {
             badge: None,
             generation,
@@ -208,7 +208,7 @@ impl Service {
         let status = Arc::new(Status::default());
         let worker_status = status.clone();
         let spawned = std::thread::Builder::new()
-            .name("slot-ra".into())
+            .name("advance-ra".into())
             .spawn(move || {
                 run(
                     root,
@@ -226,7 +226,7 @@ impl Service {
         if spawned.is_err() {
             status.set(SyncStatus::Attention);
             flushed.store(true, Ordering::Release);
-            eprintln!("slot: achievements worker could not start");
+            eprintln!("advance: achievements worker could not start");
         }
         Self {
             controls,
@@ -364,7 +364,7 @@ fn run(
     let network_status = status.clone();
     status.set(SyncStatus::Syncing);
     if std::thread::Builder::new()
-        .name("slot-ra-http".into())
+        .name("advance-ra-http".into())
         .spawn(move || {
             network::run(
                 root,

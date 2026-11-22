@@ -837,7 +837,7 @@ fn a_recents_shelf_rings_paks_and_carts_together() {
     s.played(CartPlatform::Gba, "Fusion");
     s.played(CartPlatform::Gba, "Emerald");
     s.played(CartPlatform::Gb, "Tetris Rosy Retrospection");
-    slot_store::write_slot_state(d.path(), &s).expect("write slot.state");
+    slot_store::write_slot_state(d.path(), &s).expect("write advance.state");
     let mut f = Frontend::boot(Box::new(SimPlatform::at(d.path().to_path_buf())));
     f.upload_faces(&mut c);
     let mut input = Script(VecDeque::new());

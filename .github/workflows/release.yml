@@ -78,8 +78,8 @@ jobs:
     container: rust:1-bullseye
     env:
       SLOT_SILENT: '1'
-      SLOT_STICKER_PREVIEW: /tmp/slot-about-sticker.png
-      SLOT_KID_UI_PREVIEW: /tmp/slot-parent-previews
+      SLOT_STICKER_PREVIEW: /tmp/advance-about-sticker.png
+      SLOT_KID_UI_PREVIEW: /tmp/advance-parent-previews
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
@@ -122,14 +122,14 @@ jobs:
         with:
           retention-days: 1
           name: parent-controls-previews
-          path: /tmp/slot-parent-previews/*.png
+          path: /tmp/advance-parent-previews/*.png
           if-no-files-found: error
 
       - uses: actions/upload-artifact@v7
         with:
           retention-days: 1
           name: about-sticker-preview
-          path: /tmp/slot-about-sticker.png
+          path: /tmp/advance-about-sticker.png
           if-no-files-found: error
 
       - name: Check emulator source materials
@@ -189,8 +189,8 @@ jobs:
           cat > notes.md <<'NOTES'
           ## Choose your download
 
-          - **[slot.sp-System.zip](../../releases/latest/download/slot.sp-System.zip)** — update an existing slot.sp or advance.sp card. Extract onto the content card (SD2), replacing the `System` files. Your games, saves, wallpapers and configuration stay in their existing folders. The in-app updater installs this same file.
-          - **[slot.sp-SD2.zip](../../releases/latest/download/slot.sp-SD2.zip)** — the full SD2 starter tree for a new setup. Extract its contents onto SD2 after following the [BaseOS setup guide](https://slot-cfw.fyi). This is not a bootable OS image. Use the System ZIP for routine updates.
+          - **[advance.sp-System.zip](../../releases/latest/download/advance.sp-System.zip)** — update an existing slot.sp or advance.sp card. Extract onto the content card (SD2), replacing the `System` files. Your games, saves, wallpapers and configuration stay in their existing folders. The in-app updater installs this same file.
+          - **[advance.sp-SD2.zip](../../releases/latest/download/advance.sp-SD2.zip)** — the full SD2 starter tree for a new setup. Extract its contents onto SD2 after following the [BaseOS setup guide](https://slot-cfw.fyi). This is not a bootable OS image. Use the System ZIP for routine updates.
           - **SHA256SUMS** — download checksums. **build-info.json** identifies the exact source commit and build.
 
           Back up your card and shut down the handheld before updating. No ROMs or BIOS files are included. Games must be unzipped.

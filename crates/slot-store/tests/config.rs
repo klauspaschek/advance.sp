@@ -1,7 +1,7 @@
 use slot_store::{move_config, read_slot_state};
 
 const FILES: [(&str, &str); 4] = [
-    ("slot.state", "slot.state"),
+    ("advance.state", "advance.state"),
     ("selected_core.ini", "selected_core.txt"),
     ("video_mode.ini", "video_mode.txt"),
     ("cart_shell.ini", "cart_shell.txt"),
@@ -14,7 +14,7 @@ fn the_players_files_move_from_system_to_config() {
     for (f, _) in FILES {
         std::fs::write(d.path().join("System").join(f), f).unwrap();
     }
-    std::fs::write(d.path().join("System/slot"), "binary").unwrap();
+    std::fs::write(d.path().join("System/advance"), "binary").unwrap();
 
     move_config(d.path()).unwrap();
 
@@ -29,7 +29,7 @@ fn the_players_files_move_from_system_to_config() {
         );
     }
     assert!(
-        d.path().join("System/slot").exists(),
+        d.path().join("System/advance").exists(),
         "a shipped file moved"
     );
 }
@@ -102,7 +102,7 @@ fn settings_written_before_the_move_are_still_read_after_it() {
     let d = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(d.path().join("System")).unwrap();
     std::fs::write(
-        d.path().join("System/slot.state"),
+        d.path().join("System/advance.state"),
         "cart=Emerald\nbrightness=3\nblue_light=1\nvolume=40\nmuted=0\nclock_set=1\nutc_offset_min=-240\n",
     )
     .unwrap();

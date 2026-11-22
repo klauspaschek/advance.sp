@@ -29,7 +29,7 @@ fn a_card_written_before_the_setting_reads_with_the_stick_on() {
         },
     )
     .unwrap();
-    let path = d.path().join("Config/slot.state");
+    let path = d.path().join("Config/advance.state");
     let old: String = std::fs::read_to_string(&path)
         .unwrap()
         .lines()

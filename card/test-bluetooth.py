@@ -622,7 +622,7 @@ esac
         self.assertEqual((logs / 'operation-personal.log').read_text(), 'keep')
         self.assertEqual((logs / 'errors/notes.txt').read_text(), 'keep')
         (self.root / 'Logs').mkdir()
-        (self.root / 'Logs/slot.log').write_text('x' * 300000)
+        (self.root / 'Logs/advance.log').write_text('x' * 300000)
         self.assertEqual(self.run_command('diagnose').returncode, 0)
         self.assertLessEqual((logs / 'latest-report.txt').stat().st_size, 131072)
         self.assertFalse(list(self.root.glob('lock.work.*')))
@@ -652,7 +652,7 @@ esac
 
     def test_diagnostics_include_usb_volume_and_kernel_section(self):
         (self.root / 'Config').mkdir(exist_ok=True)
-        (self.root / 'Config/slot.state').write_text('volume_usb=35\nmuted_usb=0\nprivate_setting=secret\n')
+        (self.root / 'Config/advance.state').write_text('volume_usb=35\nmuted_usb=0\nprivate_setting=secret\n')
         self.assertEqual(self.run_command('diagnose').returncode, 0)
         report = (self.root / 'Bluetooth/latest-report.txt').read_text()
         self.assertIn('volume_usb=35', report)

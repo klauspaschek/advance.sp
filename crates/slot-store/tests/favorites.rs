@@ -97,7 +97,7 @@ fn recents_and_favorites_live_in_their_own_files_one_cart_a_line() {
         std::fs::read_to_string(config.join("favorites.txt")).unwrap(),
         "gbc/Tetris DX\n"
     );
-    let state = std::fs::read_to_string(config.join("slot.state")).unwrap();
+    let state = std::fs::read_to_string(config.join("advance.state")).unwrap();
     assert!(
         !state
             .lines()

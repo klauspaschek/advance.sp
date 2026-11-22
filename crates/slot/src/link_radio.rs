@@ -91,7 +91,7 @@ fn queue() -> &'static Sender<RadioJob> {
 #[cfg(any(feature = "device", test))]
 fn link_command(root: &Path, verb: &str) -> Command {
     let mut cmd = Command::new("/bin/sh");
-    cmd.arg(root.join("System/slotlink.sh"))
+    cmd.arg(root.join("System/link.sh"))
         .arg("link")
         .arg(verb);
     cmd
@@ -184,7 +184,7 @@ mod tests {
     #[test]
     fn a_link_runs_the_cards_script_through_sh() {
         let d = tempfile::tempdir().unwrap();
-        let script = d.path().join("System/slotlink.sh");
+        let script = d.path().join("System/link.sh");
         assert_eq!(
             argv(&link_command(d.path(), "host")),
             ["/bin/sh", script.to_str().unwrap(), "link", "host"]

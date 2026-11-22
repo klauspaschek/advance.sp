@@ -29,7 +29,7 @@ fn boot_with(root: &Path, state: SlotState) -> App {
             ..state
         },
     )
-    .expect("write slot.state");
+    .expect("write advance.state");
     App::boot(root)
 }
 

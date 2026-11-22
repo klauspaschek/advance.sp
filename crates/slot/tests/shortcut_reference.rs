@@ -108,7 +108,7 @@ fn adult_reference_is_reachable_from_both_menus_and_returns_without_changing_set
     assert!(a.kid_menu.is_none());
     assert_eq!(a.quick_menu(), Some(QuickRow::Reference));
     let mut a = common::app_playing_in(d.path(), "Alpha");
-    let before = std::fs::read(d.path().join("Config/slot.state")).unwrap();
+    let before = std::fs::read(d.path().join("Config/advance.state")).unwrap();
     a.apply(Action::QuickMenu);
     common::navigate_in_game_menu(&mut a,QuickRow::Settings);
     press(&mut a, Btn::A);
@@ -121,5 +121,5 @@ fn adult_reference_is_reachable_from_both_menus_and_returns_without_changing_set
     press(&mut a, Btn::B);
     assert_eq!(a.in_game_menu(), Some(QuickRow::Reference));
     assert!(matches!(a.phase(), slot::app::Phase::Playing { cart } if cart == "Alpha"));
-    assert_eq!(std::fs::read(d.path().join("Config/slot.state")).unwrap(), before);
+    assert_eq!(std::fs::read(d.path().join("Config/advance.state")).unwrap(), before);
 }

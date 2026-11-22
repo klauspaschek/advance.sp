@@ -302,7 +302,7 @@ impl Session {
         if let Some(emu) = &self.emu {
             let mask = self.pad.mask(&self.app.controls());
             if trace() && mask.0 != self.sent {
-                eprintln!("slot: pad {:#06x}", mask.0);
+                eprintln!("advance: pad {:#06x}", mask.0);
             }
             self.sent = mask.0;
             emu.set_input(mask);
@@ -342,7 +342,7 @@ impl Session {
 
     fn act(&mut self, action: Action) {
         if trace() {
-            eprintln!("slot: {action:?} in {:?}", self.app.phase());
+            eprintln!("advance: {action:?} in {:?}", self.app.phase());
         }
         if !self.app.kid_action_allowed(action) {
             return;
@@ -493,7 +493,7 @@ impl Session {
                     Some(player) => emu.begin_cable(player, transport),
                     None => emu.begin_link(client_id, transport),
                 },
-                None => eprintln!("slot: link: a transport arrived with no core to run it"),
+                None => eprintln!("advance: link: a transport arrived with no core to run it"),
             }
         }
         if let Some(on)=self.app.take_frame_blending() {
@@ -763,7 +763,7 @@ impl Session {
         let chosen = self.app.gb_colors();
         let colour = self.app.colour_correction_for(platform);
         let join = std::thread::Builder::new()
-            .name("slot-open".into())
+            .name("advance-open".into())
             .spawn(move || {
                 let resume = match clean {
                     true => Ok(None),
@@ -837,7 +837,7 @@ impl Session {
     }
 
     fn reload_for_link(&mut self, stem: &str, serial: &'static str) {
-        eprintln!("slot: link: loading {stem} again with gpsp_serial={serial}");
+        eprintln!("advance: link: loading {stem} again with gpsp_serial={serial}");
         if self.emu.is_some() {
             self.app.flush_resume();
         }
@@ -897,7 +897,7 @@ pub(crate) fn trace() -> bool {
 }
 
 fn launch(step: &str) {
-    eprintln!("slot: launch: {step} at {:.1} ms", crate::boot_time::ms());
+    eprintln!("advance: launch: {step} at {:.1} ms", crate::boot_time::ms());
 }
 
 #[cfg(test)]

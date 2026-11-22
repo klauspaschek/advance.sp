@@ -124,4 +124,4 @@ for binary in "$out"/bin/*; do strip "$binary"; done
 cp "$script" "$sources/build-samba.sh"
 cp "$(dirname "$script")/samba-build-env.sh" "$sources/samba-build-env.sh"
 cp "$(dirname "$script")/prepare-samba-output.py" "$sources/prepare-samba-output.py"
-printf 'Corresponding source: slot.sp-network-sources.zip from the same build/release.\n' > "$out/licenses/SOURCES.txt"
+printf 'Corresponding source: advance.sp-network-sources.zip from the same build/release.\n' > "$out/licenses/SOURCES.txt"

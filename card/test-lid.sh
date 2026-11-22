@@ -7,7 +7,7 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT HUP INT TERM
 
 setup() {
-	rm -rf "$TMP/Config" "$TMP/psy" "$TMP/bin" "$TMP"/*.log "$TMP/closed" "$TMP/slot.state"
+	rm -rf "$TMP/Config" "$TMP/psy" "$TMP/bin" "$TMP"/*.log "$TMP/closed" "$TMP/advance.state"
 	mkdir -p "$TMP/psy" "$TMP/bin" "$TMP/Config"
 	for tool in rmmod sync poweroff; do
 		printf '#!/bin/sh\necho "%s $*" >> "%s"\n' "$tool" "$TMP/calls.log" > "$TMP/bin/$tool"
@@ -25,7 +25,7 @@ at() {
 }
 
 tick() {
-	SLOT_ROOT="$TMP" AGS_PSY="$TMP/psy" AGS_SLOT_STATE="$TMP/slot.state" AGS_TRACE="$TMP/trace.log" \
+	SLOT_ROOT="$TMP" AGS_PSY="$TMP/psy" AGS_SLOT_STATE="$TMP/advance.state" AGS_TRACE="$TMP/trace.log" \
 		AGS_LID_CLOSED="$TMP/closed" AGS_UPTIME="$TMP/uptime" \
 		AGS_RMMOD="$TMP/bin/rmmod" AGS_SYNC="$TMP/bin/sync" AGS_POWEROFF="$TMP/bin/poweroff" \
 		AGS_WIFI_WAIT="${WIFI_WAIT:-5}" sh "$SCRIPT" once
@@ -54,10 +54,10 @@ off || fail "did not power off 4 minutes after the lid closed"
 rmmod 8821cs
 sync
 poweroff" ] || fail "power off did not sync, unload the WiFi driver and sync again: $(cat "$TMP/calls.log")"
-grep -q 'lid: closed 240s and slot has not powered off' "$TMP/trace.log" || fail "the power off left no trace"
+grep -q 'lid: closed 240s and advance.sp has not powered off' "$TMP/trace.log" || fail "the power off left no trace"
 
 setup
-echo "lid_off_min=10" > "$TMP/slot.state"
+echo "lid_off_min=10" > "$TMP/advance.state"
 lid 0
 at 0
 tick
@@ -69,7 +69,7 @@ tick
 off || fail "did not power off 11 minutes into a 10 minute setting"
 
 setup
-echo "lid_off_min=7" > "$TMP/slot.state"
+echo "lid_off_min=7" > "$TMP/advance.state"
 lid 0
 at 0
 tick
@@ -115,9 +115,9 @@ if sh "$SCRIPT" bogus 2>/dev/null; then
 	fail "an unknown subcommand exited 0"
 fi
 
-# Never must override any stale upstream timer in slot.state.
+# Never must override any stale upstream timer in advance.state.
 setup
-echo 'lid_off_min=1' > "$TMP/slot.state"
+echo 'lid_off_min=1' > "$TMP/advance.state"
 echo 'sleep_timeout=3' > "$TMP/Config/power.txt"
 lid 0
 at 0
@@ -131,7 +131,7 @@ for pair in '0 3' '1 15' '2 30' '4 1' '5 5' '6 10'; do
  setup
  set -- $pair
  echo "sleep_timeout=$1" > "$TMP/Config/power.txt"
- echo 'lid_off_min=1' > "$TMP/slot.state"
+ echo 'lid_off_min=1' > "$TMP/advance.state"
  lid 0
  at 0
  tick

@@ -8,7 +8,7 @@ fn boot_animation_defaults_on_and_survives_restart_when_disabled() {
     let state = SlotState { boot_animation: false, ..SlotState::default() };
     write_slot_state(d.path(), &state).unwrap();
     assert!(!read_slot_state(d.path()).boot_animation);
-    let path = d.path().join("Config/slot.state");
+    let path = d.path().join("Config/advance.state");
     let old = std::fs::read_to_string(&path).unwrap().lines()
         .filter(|line| !line.starts_with("boot_animation="))
         .map(|line| format!("{line}\n")).collect::<String>();

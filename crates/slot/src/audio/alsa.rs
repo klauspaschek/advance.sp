@@ -24,7 +24,7 @@ const RELEASE_AFTER: Duration = Duration::from_secs(3);
 
 pub fn requested_device() -> Option<String> {
     let path =
-        std::env::var_os("SLOT_AUDIO_ROUTE").unwrap_or_else(|| "/run/slot-audio-device".into());
+        std::env::var_os("SLOT_AUDIO_ROUTE").unwrap_or_else(|| "/run/advance-audio-device".into());
     let text = std::fs::read_to_string(path).ok()?;
     parse_device(&text)
 }
@@ -145,7 +145,7 @@ impl Alsa {
                 last = AudioError::Config(format!("{name}: {}", self.message(err)));
                 continue;
             }
-            eprintln!("slot: audio {name} at {rate} Hz");
+            eprintln!("advance: audio {name} at {rate} Hz");
             return Ok((pcm, name.to_owned()));
         }
         Err(last)
@@ -201,7 +201,7 @@ impl AudioSink for AlsaSink {
         let held = self.held.clone();
         let (ready_tx, ready_rx) = mpsc::channel();
         let join = std::thread::Builder::new()
-            .name("slot-audio".into())
+            .name("advance-audio".into())
             .spawn(move || match play(&ring, sample_rate) {
                 Ok(mut device) => {
                     let _ = ready_tx.send(Ok(()));
@@ -300,19 +300,19 @@ impl Playback {
             match (self.pcm, hold) {
                 (Some(_), false) if !held.load(Ordering::Relaxed) => {
                     self.release();
-                    eprintln!("slot: audio released after silence");
+                    eprintln!("advance: audio released after silence");
                 }
                 (None, true) if self.retry_at.is_none_or(|at| Instant::now() >= at) => match self.alsa.open_pcm(self.rate) {
                     Ok((pcm, name)) => {
                         self.actual = name;
-                        eprintln!("slot: audio reopened at {:.1} ms", crate::boot_time::ms());
+                        eprintln!("advance: audio reopened at {:.1} ms", crate::boot_time::ms());
                         self.pcm = Some(pcm);
                         self.failing = false;
                         self.retry_at = None;
                     }
                     Err(e) => {
                         if !self.failing {
-                            eprintln!("slot: audio: {e}, retrying");
+                            eprintln!("advance: audio: {e}, retrying");
                             self.failing = true;
                         }
                         self.retry_at = Some(Instant::now() + Duration::from_millis(500));
@@ -367,7 +367,7 @@ impl Playback {
             if frames < 0 {
                 let err = unsafe { (self.alsa.recover)(pcm, frames as c_int, 1) };
                 if err < 0 {
-                    eprintln!("slot: audio: {}", self.alsa.message(err));
+                    eprintln!("advance: audio: {}", self.alsa.message(err));
                     return false;
                 }
                 continue;

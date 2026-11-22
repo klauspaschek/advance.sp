@@ -33,7 +33,7 @@ pub fn ensure(root: &Path) {
         let _ = std::fs::create_dir_all(root.join(sub));
     }
     if let Err(e) = slot_store::move_config(root) {
-        eprintln!("slot: config: {e}");
+        eprintln!("advance: config: {e}");
     }
 }
 

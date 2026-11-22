@@ -59,7 +59,7 @@ impl Rewind {
                 self.cur = Some(prev);
             }
             Err(e) => {
-                eprintln!("slot: rewind: {e}");
+                eprintln!("advance: rewind: {e}");
                 self.deltas.clear();
                 self.bytes = 0;
             }
@@ -99,7 +99,7 @@ impl RewindThread {
         let fill = std::sync::Arc::new(std::sync::atomic::AtomicU8::new(0));
         let published = fill.clone();
         std::thread::Builder::new()
-            .name("slot-rewind".into())
+            .name("advance-rewind".into())
             .spawn(move || {
                 let mut rewind = Rewind::new(budget_bytes);
                 while let Ok(msg) = rx.recv() {

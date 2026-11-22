@@ -464,7 +464,7 @@ fn ending_a_session_reaches_the_emulator_thread_too() {
             ..Default::default()
         },
     )
-    .expect("write slot.state");
+    .expect("write advance.state");
     let mut s = Session::boot(d.path().to_path_buf());
     let mut now: Millis = 0;
 
@@ -508,7 +508,7 @@ fn a_critical_battery_reading_reaches_the_emulator_thread_too() {
             ..Default::default()
         },
     )
-    .expect("write slot.state");
+    .expect("write advance.state");
     let mut s = Session::boot(d.path().to_path_buf());
     let mut now: Millis = 0;
 
@@ -555,7 +555,7 @@ fn a_live_session_refuses_fast_forward() {
             ..Default::default()
         },
     )
-    .expect("write slot.state");
+    .expect("write advance.state");
     let mut s = Session::boot(d.path().to_path_buf());
     let mut now: Millis = 0;
 
@@ -590,7 +590,7 @@ fn the_link_screen_over_a_session_leaves_the_core_running() {
             ..Default::default()
         },
     )
-    .expect("write slot.state");
+    .expect("write advance.state");
     let mut s = Session::boot(d.path().to_path_buf());
     let mut now: Millis = 0;
 
@@ -639,7 +639,7 @@ fn a_live_session_hides_the_fast_forward_badge() {
             ..Default::default()
         },
     )
-    .expect("write slot.state");
+    .expect("write advance.state");
     let mut s = Session::boot(d.path().to_path_buf());
     let mut now: Millis = 0;
 

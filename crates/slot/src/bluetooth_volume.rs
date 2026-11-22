@@ -84,7 +84,7 @@ impl Volume {
                         if self.link.is_none() {
                             // once per connection: which volume control the headset offers
                             eprintln!(
-                                "slot: bluetooth volume: the headset's own volume follows slot's, now {}%",
+                                "advance: bluetooth volume: the headset's own volume follows slot's, now {}%",
                                 synced.level
                             );
                         }
@@ -97,7 +97,7 @@ impl Volume {
                         }
                         if synced.remote {
                             eprintln!(
-                                "slot: bluetooth volume: the headset's own buttons set {}%",
+                                "advance: bluetooth volume: the headset's own buttons set {}%",
                                 synced.level
                             );
                         }
@@ -109,7 +109,7 @@ impl Volume {
                     Err(why) => {
                         if self.reason != Some(why) {
                             let detail = if reply.detail.is_empty() { String::new() } else { format!(": {}", reply.detail) };
-                            eprintln!("slot: bluetooth volume: not linked ({why}{detail}): slot lowers the sound itself, the headset's own volume stays as set on it; retrying every 5 s");
+                            eprintln!("advance: bluetooth volume: not linked ({why}{detail}): slot lowers the sound itself, the headset's own volume stays as set on it; retrying every 5 s");
                             self.reason = Some(why);
                         }
                         self.link = None;

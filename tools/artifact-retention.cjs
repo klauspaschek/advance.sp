@@ -1,6 +1,6 @@
 // Temporary Actions files are disposable; release assets and the live site are durable.
 const DAY = 24 * 60 * 60 * 1000;
-const releaseFiles = ['slot.sp-System.zip', 'slot.sp-SD2.zip', 'SHA256SUMS', 'build-info.json'];
+const releaseFiles = ['advance.sp-System.zip', 'advance.sp-SD2.zip', 'SHA256SUMS', 'build-info.json'];
 function completeRelease(release) {
   return release && !release.draft && releaseFiles.every(name => release.assets?.some(a => a.name === name && a.size > 0));
 }

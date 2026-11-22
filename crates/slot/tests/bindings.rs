@@ -949,7 +949,7 @@ fn with_turbo_off_its_rows_are_hidden_and_never_flagged() {
     assert_eq!(s.app().clash(QuickRow::ScSave), Some(QuickRow::GameTurboA));
     let mut state = slot_store::read_slot_state(d.path());
     state.turbo = false;
-    slot_store::write_slot_state(d.path(), &state).expect("write slot.state");
+    slot_store::write_slot_state(d.path(), &state).expect("write advance.state");
     let (s, _) = on_shelf(d.path());
     for row in [QuickRow::GameTurboA, QuickRow::GameTurboB] {
         assert!(s.app().hidden_rows().contains(&row), "{row:?} is shown");

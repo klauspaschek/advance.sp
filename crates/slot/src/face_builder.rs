@@ -26,7 +26,7 @@ impl FaceBuilder {
         let (requests, inbox) = mpsc::channel::<(Cart,u64)>();
         let (outbox, built) = mpsc::channel();
         let spawned = thread::Builder::new()
-            .name("slot-faces".into())
+            .name("advance-faces".into())
             .spawn(move || {
                 while let Ok((mut cart,mut revision)) = inbox.recv() {
                     while let Ok((newer,new_revision)) = inbox.try_recv() {
@@ -52,7 +52,7 @@ impl FaceBuilder {
                 }
             });
         if let Err(e) = spawned {
-            eprintln!("slot: faces: worker thread failed to start: {e}");
+            eprintln!("advance: faces: worker thread failed to start: {e}");
         }
         FaceBuilder { requests, built }
     }

@@ -54,7 +54,7 @@ pub fn swap_shaders(root: &Path, state: &mut SlotState, on_tv: bool) -> bool {
                 state.shader_gbc.name()
             );
             if let Err(e) = slot_store::atomic_write(&file, kept.as_bytes()) {
-                eprintln!("slot: hdmi: could not keep the handheld's shaders: {e}");
+                eprintln!("advance: hdmi: could not keep the handheld's shaders: {e}");
                 return false;
             }
         }

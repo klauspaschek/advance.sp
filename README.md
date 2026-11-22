@@ -87,7 +87,7 @@ Without a cable nothing changes.
 <details>
 <summary><strong>If the TV stays dark</strong></summary>
 
-Every start with a cable in adds a line such as `hdmi: cable in, output hdmi, fb 848,960, sound 'plughw:CARD=ahubhdmi,DEV=0'` to `Logs/slot-session.log`. If the switch failed, the log says why. Please include that file, and `Logs/slot.log`, when you report a problem.
+Every start with a cable in adds a line such as `hdmi: cable in, output hdmi, fb 848,960, sound 'plughw:CARD=ahubhdmi,DEV=0'` to `Logs/advance-session.log`. If the switch failed, the log says why. Please include that file, and `Logs/slot.log`, when you report a problem.
 
 </details>
 
@@ -95,10 +95,10 @@ Every start with a cable in adds a line such as `hdmi: cable in, output hdmi, fb
 
 advance.sp installs exactly like slot.sp and uses the same folders. Follow slot.sp's [new installation](https://jakegraving.com/slot.sp/installing/) guide, but take the downloads from **[this repository's releases](https://github.com/klauspaschek/advance.sp/releases/latest)**:
 
-- **slot.sp-System.zip** updates an existing slot.sp or advance.sp card: replace the `System` folder on the content card (SD2).
-- **slot.sp-SD2.zip** is the full starter tree for a new card.
+- **advance.sp-System.zip** updates an existing slot.sp or advance.sp card: replace the `System` folder on the content card (SD2).
+- **advance.sp-SD2.zip** is the full starter tree for a new card.
 
-Coming from slot.sp, replacing `System` is all it takes. Games, saves, labels, wallpapers and settings live outside `System` and stay as they are. The in-app updater (**General → Updates**) installs advance.sp releases from this repository from then on, and also replaces only `System`.
+Coming from slot.sp, replacing `System` is all it takes. Games, saves, labels, wallpapers and settings live outside `System` and stay as they are. The in-app updater (**General → Updates**) installs advance.sp releases from this repository from then on, and also replaces only `System`. A card with an advance.sp release from before 23 November 2026 needs this one copy by hand too: those releases still looked for the old `slot.sp-System.zip` name. The first start renames the old settings and logs (`slot.state` → `advance.state`, `Logs/slot*.log` → `Logs/advance*.log`) and removes the old `System/slot` program and `slot*.sh` scripts.
 
 ## Everything else
 
