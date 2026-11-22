@@ -17,7 +17,7 @@
 | 🎮 **Bluetooth game controllers**: pair, play, sleep and wake from the controller | ✅ Done, tested on an RG SP with an Xbox Wireless Controller |
 | 📶 **A Bluetooth tile** in the menu: one place for the radio, headphones and controllers | ✅ Done |
 | 🎧 **Headphones that behave**: their volume buttons and slot's stay in step, headphones that connect by themselves take the sound, and volume never jumps loud out of mute | ✅ Done |
-| 📺 **[HDMI out](#on-a-tv-hdmi)** through the RG SP's mini HDMI port: plug in a TV and the picture follows the cable | 🧪 Built, awaiting its first test on an RG SP |
+| 📺 **[HDMI out](#on-a-tv-hdmi)** through the RG SP's mini HDMI port: plug in a TV and the picture follows the cable, with the TV's sound, optional TV bezels and the shader off | ✅ Done, tested on an RG SP with a 1080p TV |
 
 ### Menu changes from slot.sp
 
