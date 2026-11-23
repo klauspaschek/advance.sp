@@ -1,7 +1,7 @@
 use slot_store::{move_config, read_slot_state};
 
 const FILES: [(&str, &str); 4] = [
-    ("advance.state", "advance.state"),
+    ("slot.state", "advance.state"),
     ("selected_core.ini", "selected_core.txt"),
     ("video_mode.ini", "video_mode.txt"),
     ("cart_shell.ini", "cart_shell.txt"),
@@ -102,7 +102,7 @@ fn settings_written_before_the_move_are_still_read_after_it() {
     let d = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(d.path().join("System")).unwrap();
     std::fs::write(
-        d.path().join("System/advance.state"),
+        d.path().join("System/slot.state"),
         "cart=Emerald\nbrightness=3\nblue_light=1\nvolume=40\nmuted=0\nclock_set=1\nutc_offset_min=-240\n",
     )
     .unwrap();
@@ -114,4 +114,21 @@ fn settings_written_before_the_move_are_still_read_after_it() {
         (s.cart.as_deref(), s.volume, s.utc_offset_min),
         (Some("Emerald"), 40, -240)
     );
+}
+
+#[test]
+fn slot_sp_settings_in_config_keep_their_contents_under_the_advance_sp_name() {
+    let d = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(d.path().join("Config")).unwrap();
+    std::fs::write(
+        d.path().join("Config/slot.state"),
+        "cart=Emerald\nbrightness=3\nblue_light=1\nvolume=40\nmuted=0\nclock_set=1\nutc_offset_min=-240\n",
+    )
+    .unwrap();
+
+    move_config(d.path()).unwrap();
+
+    assert!(!d.path().join("Config/slot.state").exists());
+    let s = read_slot_state(d.path());
+    assert_eq!((s.cart.as_deref(), s.volume), (Some("Emerald"), 40));
 }
