@@ -19,10 +19,10 @@ FSCK_FAT="${AGS_FSCK_FAT:-/usr/sbin/fsck.fat}"
 FSCK_EXFAT="${AGS_FSCK_EXFAT:-$HERE/fsck.exfat}"
 SLEEP="${AGS_SLEEP:-sleep}"
 HOLD="${AGS_HOLD:-2}"
-LOG="$DATA/slot-repair.log"
-RESULT="$DATA/slot-repair.result"
+LOG="$DATA/advance-repair.log"
+RESULT="$DATA/advance-repair.result"
 
-exec > "${AGS_OUT:-/tmp/slot-repair.out}" 2>&1 < /dev/null
+exec > "${AGS_OUT:-/tmp/advance-repair.out}" 2>&1 < /dev/null
 cd /
 
 log() {
@@ -146,7 +146,7 @@ if [ "$cards" -eq 1 ]; then
 else
 	say "UNMOUNTING DISKS"
 fi
-pid="$(cat "$RUN/slot-led.pid" 2>/dev/null)"
+pid="$(cat "$RUN/advance-led.pid" 2>/dev/null)"
 [ -n "$pid" ] && kill "$pid" 2>/dev/null
 bounded "$STEP_WAIT" $SYNC
 set -- "$@" end

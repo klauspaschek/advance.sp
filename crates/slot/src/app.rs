@@ -893,7 +893,7 @@ impl App {
         app.state.shell_colour=app.state.shell_colour.resolved(app.state.appearance.light());
         match PlayHistory::read(root) {
             Ok(history) => app.play_history = history,
-            Err(e) => { app.history_readable = false; eprintln!("slot: play history: {e}"); }
+            Err(e) => { app.history_readable = false; eprintln!("advance: play history: {e}"); }
         }
         // Seed known recency once from the old list without inventing playtime or dates.
         if app.history_readable && !root.join("Config/play-history.txt").exists() {
@@ -994,7 +994,7 @@ impl App {
     }
 
     fn start_after_a_crash(&mut self, stem: &str) {
-        eprintln!("slot: {stem} took slot down while it was loading, starting on the shelf");
+        eprintln!("advance: {stem} took slot down while it was loading, starting on the shelf");
         if let Some(mark) = &self.loading {
             mark.clear();
         }
@@ -1013,9 +1013,9 @@ impl App {
         let core = slot_store::core_for_platform(root, stem, platform);
         let ring = StateRing::new(root, platform, core, stem);
         match ring.retire_resume(&format_stamp(self.wall_secs())) {
-            Ok(Some(to)) => eprintln!("slot: resume: moved {stem}'s state to {}", to.display()),
+            Ok(Some(to)) => eprintln!("advance: resume: moved {stem}'s state to {}", to.display()),
             Ok(None) => {}
-            Err(e) => eprintln!("slot: resume: could not move {stem}'s state aside: {e}"),
+            Err(e) => eprintln!("advance: resume: could not move {stem}'s state aside: {e}"),
         }
     }
 
@@ -1325,13 +1325,13 @@ impl App {
         };
         let removing = self.shot_writer.removing();
         let spawned = std::thread::Builder::new()
-            .name("slot-shot-list".into())
+            .name("advance-shot-list".into())
             .spawn(move || {
                 let at = std::time::Instant::now();
                 let mut shots = dir.list().unwrap_or_default();
                 shots.retain(|e| !removing.contains(&e.path));
                 eprintln!(
-                    "slot: shots: listed {} in {} ms",
+                    "advance: shots: listed {} in {} ms",
                     shots.len(),
                     at.elapsed().as_millis()
                 );
@@ -1339,7 +1339,7 @@ impl App {
             });
         match spawned {
             Ok(_) => self.shot_listing = Some(rx),
-            Err(e) => eprintln!("slot: shots: no list thread: {e}"),
+            Err(e) => eprintln!("advance: shots: no list thread: {e}"),
         }
     }
 
@@ -2415,7 +2415,7 @@ impl App {
             ("carousel", write_carousel(root, &self.carousel))
         };
         if let Err(e) = &written {
-            eprintln!("slot: {what}: {e}");
+            eprintln!("advance: {what}: {e}");
         }
         self.card_writes.wrote(what, &written);
     }
@@ -2461,7 +2461,7 @@ impl App {
             if let Some(root) = &self.root {
                 let written = write_controls(root, &self.controls);
                 if let Err(e) = &written {
-                    eprintln!("slot: controls: {e}");
+                    eprintln!("advance: controls: {e}");
                 }
                 self.card_writes.wrote("controls", &written);
             }
@@ -2470,7 +2470,7 @@ impl App {
             if let Some(root) = &self.root {
                 let written = write_shortcuts(root, &self.shortcuts);
                 if let Err(e) = &written {
-                    eprintln!("slot: shortcuts: {e}");
+                    eprintln!("advance: shortcuts: {e}");
                 }
                 self.card_writes.wrote("shortcuts", &written);
             }
@@ -2479,7 +2479,7 @@ impl App {
             if let Some(root) = &self.root {
                 let written = write_carousel(root, &self.carousel);
                 if let Err(e) = &written {
-                    eprintln!("slot: carousel: {e}");
+                    eprintln!("advance: carousel: {e}");
                 }
                 self.card_writes.wrote("carousel", &written);
             }
@@ -2576,7 +2576,7 @@ impl App {
         };
         let written = video_mode::write_video_mode(&root, cart, mode);
         if let Err(e) = &written {
-            eprintln!("slot: video: could not write video_mode.txt: {e}");
+            eprintln!("advance: video: could not write video_mode.txt: {e}");
         }
         self.card_writes.wrote("video_mode.txt", &written);
     }
@@ -2745,7 +2745,7 @@ impl App {
             return;
         };
         if let Err(e) = crate::card_log::copy_to_card(&log, root) {
-            eprintln!("slot: card log: {e}");
+            eprintln!("advance: card log: {e}");
         }
     }
 
@@ -2771,7 +2771,7 @@ impl App {
             kernel: &kernel,
         });
         if let Err(e) = crate::card_log::append(&log, &entry) {
-            eprintln!("slot: card log: {e}");
+            eprintln!("advance: card log: {e}");
         }
     }
 
@@ -2826,7 +2826,7 @@ impl App {
         if self.link_active() || self.shutting_down() {
             return false;
         }
-        eprintln!("slot: hdmi: the cable changed, starting again on the other output");
+        eprintln!("advance: hdmi: the cable changed, starting again on the other output");
         if let Some(menu) = &mut self.network { menu.set_sharing_allowed(false); }
         self.close_game_menu();
         self.remember_shelf();
@@ -3118,7 +3118,7 @@ impl App {
         match read {
             Ok(bytes) => Some(bytes),
             Err(e) => {
-                eprintln!("slot: {what} read: {e}");
+                eprintln!("advance: {what} read: {e}");
                 self.card_writes.failed(what, &e);
                 None
             }
@@ -3933,7 +3933,7 @@ impl App {
             let value = !self.pad_faces_by_position;
             if let Some(root) = &self.root {
                 if let Err(e) = crate::bluetooth::save_pad_faces(root, value) {
-                    eprintln!("slot: controller layout: {e}");
+                    eprintln!("advance: controller layout: {e}");
                     return;
                 }
             }
@@ -4977,7 +4977,7 @@ impl App {
         let failing = self.card_writes.failing() || self.card_read_only;
         if failing != self.hud.alarmed() {
             eprintln!(
-                "slot: card: alarm {} (read-only {})",
+                "advance: card: alarm {} (read-only {})",
                 if failing { "on" } else { "off" },
                 self.card_read_only
             );
@@ -5257,9 +5257,9 @@ impl App {
         self.state_writer.flush();
         let written = write_slot_state(root, &self.state);
         if let Err(e) = &written {
-            eprintln!("slot: slot.state: {e}");
+            eprintln!("advance: advance.state: {e}");
         }
-        self.card_writes.wrote("slot.state", &written);
+        self.card_writes.wrote("advance.state", &written);
     }
 
     fn persist_soon(&self) {
@@ -5303,12 +5303,12 @@ impl App {
         let ring = StateRing::new(root, self.platform, self.core, stem);
         match ring.retire_resume(&format_stamp(self.wall_secs())) {
             Ok(Some(to)) => eprintln!(
-                "slot: resume: {} refused this state, moved it to {}",
+                "advance: resume: {} refused this state, moved it to {}",
                 self.core.as_str(),
                 to.display()
             ),
             Ok(None) => {}
-            Err(e) => eprintln!("slot: resume: could not move the refused state aside: {e}"),
+            Err(e) => eprintln!("advance: resume: could not move the refused state aside: {e}"),
         }
     }
 
@@ -6793,7 +6793,7 @@ impl App {
             return;
         };
         eprintln!(
-            "slot: launch: insert {cart} at {:.1} ms",
+            "advance: launch: insert {cart} at {:.1} ms",
             crate::boot_time::ms()
         );
         self.play_held = None;
@@ -6871,7 +6871,7 @@ impl App {
         let (state, sav) = match snapshot.state() {
             Some(state) => trusted_write(snapshot.as_ref(), state, "eject"),
             None => {
-                eprintln!("slot: eject: the core gave up no state");
+                eprintln!("advance: eject: the core gave up no state");
                 (None, None)
             }
         };
@@ -6892,7 +6892,7 @@ impl App {
                 self.card_writes.ok("eject");
             }
             Err(e) => {
-                eprintln!("slot: eject: {e}");
+                eprintln!("advance: eject: {e}");
                 self.card_writes.failed("eject", &e);
             }
         }
@@ -6958,7 +6958,7 @@ impl App {
         self.wake();
         self.wake_guard = Some(std::time::Instant::now() + std::time::Duration::from_millis(750));
         if let Err(e) = result {
-            eprintln!("slot: suspend: {e}");
+            eprintln!("advance: suspend: {e}");
             self.hud.toast(Toast::SleepUnavailable, self.now());
         }
     }
@@ -7413,7 +7413,7 @@ impl App {
             return;
         };
         if let Err(e) = slot_store::write_selected_core(&root, &cart.stem, core) {
-            eprintln!("slot: core: could not write selected_core.txt: {e}");
+            eprintln!("advance: core: could not write selected_core.txt: {e}");
         }
     }
 
@@ -7510,7 +7510,7 @@ impl App {
         };
         let (state, sav, what) = if resume {
             let Some(state) = snapshot.state() else {
-                eprintln!("slot: autosave: the core gave up no state");
+                eprintln!("advance: autosave: the core gave up no state");
                 return;
             };
             let (state, sav) = trusted_write(snapshot.as_ref(), state, "autosave");
@@ -7534,16 +7534,16 @@ impl App {
                 sav.as_deref(),
             );
             if let Err(e) = &written {
-                eprintln!("slot: {what}: {e}");
+                eprintln!("advance: {what}: {e}");
             }
             failing.wrote(what, &written);
         };
         match std::thread::Builder::new()
-            .name("slot-autosave".into())
+            .name("advance-autosave".into())
             .spawn(write)
         {
             Ok(h) => self.pending_save = Some(h),
-            Err(e) => eprintln!("slot: autosave: no writer thread: {e}"),
+            Err(e) => eprintln!("advance: autosave: no writer thread: {e}"),
         }
     }
 
@@ -7559,7 +7559,7 @@ impl App {
             return;
         };
         let Some(state) = snapshot.state() else {
-            eprintln!("slot: flush: the core gave up no state");
+            eprintln!("advance: flush: the core gave up no state");
             return;
         };
         let (state, sav) = trusted_write(snapshot.as_ref(), state, "flush");
@@ -7572,7 +7572,7 @@ impl App {
             sav.as_deref(),
         );
         if let Err(e) = &written {
-            eprintln!("slot: flush: {e}");
+            eprintln!("advance: flush: {e}");
         }
         self.card_writes.wrote("flush", &written);
     }
@@ -7780,7 +7780,7 @@ impl App {
             return;
         };
         if let Err(e) = ring.remove(&stamp) {
-            eprintln!("slot: delete: {e}");
+            eprintln!("advance: delete: {e}");
             return;
         }
         if self.undo_targets(&stamp) {
@@ -7821,7 +7821,7 @@ impl App {
         let bytes = match std::fs::read(state) {
             Ok(bytes) => bytes,
             Err(e) => {
-                eprintln!("slot: load: {e}");
+                eprintln!("advance: load: {e}");
                 return false;
             }
         };
@@ -7867,11 +7867,11 @@ impl App {
             return;
         };
         if !snapshot.resume_trusted() {
-            eprintln!("slot: save: the core refused the resume it was given, not pushing a state");
+            eprintln!("advance: save: the core refused the resume it was given, not pushing a state");
             return self.refuse();
         }
         let Some(state) = snapshot.state() else {
-            eprintln!("slot: save: the core gave up no state");
+            eprintln!("advance: save: the core gave up no state");
             return;
         };
         let thumb = snapshot.thumb().unwrap_or_default();
@@ -7880,7 +7880,7 @@ impl App {
         let pushed = ring.push(&state, &thumb, &stamp);
         self.card_writes.wrote("save state", &pushed);
         if let Err(e) = pushed {
-            eprintln!("slot: save: {e}");
+            eprintln!("advance: save: {e}");
             return;
         }
         self.has_states = true;
@@ -8070,14 +8070,14 @@ impl App {
             return;
         };
         if let Err(e) = ring.remove(stamp) {
-            eprintln!("slot: undo: {e}");
+            eprintln!("advance: undo: {e}");
             return;
         }
         let Some((stamp, state, thumb)) = evicted else {
             return;
         };
         if let Err(e) = ring.push(&state, &thumb, &stamp) {
-            eprintln!("slot: undo: {e}");
+            eprintln!("advance: undo: {e}");
         }
     }
 
@@ -8148,7 +8148,7 @@ fn trusted_write(
         Some(state)
     } else {
         eprintln!(
-            "slot: {verb}: the core refused the resume it was given, not overwriting the saved one"
+            "advance: {verb}: the core refused the resume it was given, not overwriting the saved one"
         );
         None
     };
@@ -8162,7 +8162,7 @@ fn trusted_sav(snapshot: &dyn Snapshot, verb: &str) -> Option<Vec<u8>> {
     }
     if sav.is_some() {
         eprintln!(
-            "slot: {verb}: the core refused the save ram it was given, not overwriting the saved one"
+            "advance: {verb}: the core refused the save ram it was given, not overwriting the saved one"
         );
     }
     None

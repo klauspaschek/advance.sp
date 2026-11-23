@@ -73,7 +73,7 @@ impl PanelRefresh {
         match result {
             Ok(()) => true,
             Err(e) => {
-                eprintln!("slot: refresh: {e}");
+                eprintln!("advance: refresh: {e}");
                 false
             }
         }
@@ -134,11 +134,11 @@ fn apply(
     if result.is_err() {
         for (address, value) in registers(false) {
             if let Err(e) = write(address, value) {
-                eprintln!("slot: refresh: restoring 60 Hz at 0x{address:08x}: {e}");
+                eprintln!("advance: refresh: restoring 60 Hz at 0x{address:08x}: {e}");
             }
         }
         if let Err(e) = verify(false) {
-            eprintln!("slot: refresh: verifying restored 60 Hz: {e}");
+            eprintln!("advance: refresh: verifying restored 60 Hz: {e}");
         }
     }
     result

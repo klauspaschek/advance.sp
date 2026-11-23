@@ -50,7 +50,7 @@ fn test_rom() -> PathBuf {
         let o = 0xc0 + i * 4;
         rom[o..o + 4].copy_from_slice(&w.to_le_bytes());
     }
-    let p = Path::new(env!("CARGO_TARGET_TMPDIR")).join("slot-test.gba");
+    let p = Path::new(env!("CARGO_TARGET_TMPDIR")).join("advance-test.gba");
     std::fs::write(&p, rom).expect("write test rom");
     p
 }
@@ -64,7 +64,7 @@ fn logo_rom() -> Option<PathBuf> {
     })?;
     let mut rom = std::fs::read(test_rom()).ok()?;
     rom[4..0xa0].copy_from_slice(&logo);
-    let p = Path::new(env!("CARGO_TARGET_TMPDIR")).join("slot-test-logo.gba");
+    let p = Path::new(env!("CARGO_TARGET_TMPDIR")).join("advance-test-logo.gba");
     std::fs::write(&p, rom).ok()?;
     Some(p)
 }
@@ -157,7 +157,7 @@ fn rtc_rom() -> PathBuf {
         .iter()
         .fold(0u8, |a, b| a.wrapping_sub(*b).wrapping_sub(1));
     rom[0x150..0x152].copy_from_slice(&[0x18, 0xfe]);
-    let p = Path::new(env!("CARGO_TARGET_TMPDIR")).join("slot-rtc.gbc");
+    let p = Path::new(env!("CARGO_TARGET_TMPDIR")).join("advance-rtc.gbc");
     std::fs::write(&p, rom).expect("write rtc rom");
     p
 }

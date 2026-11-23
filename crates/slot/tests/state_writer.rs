@@ -42,7 +42,7 @@ fn the_writer_says_the_card_is_failing_until_a_write_lands() {
     assert!(
         failing
             .last_error()
-            .is_some_and(|e| e.starts_with("slot.state: ")),
+            .is_some_and(|e| e.starts_with("advance.state: ")),
         "the refused write left no error to log: {:?}",
         failing.last_error()
     );

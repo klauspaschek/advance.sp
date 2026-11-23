@@ -418,7 +418,7 @@ impl Default for SlotState {
 }
 
 fn state_path(root: &Path) -> PathBuf {
-    root.join("Config").join("slot.state")
+    root.join("Config").join("advance.state")
 }
 
 const RECENTS_FILE: &str = "recents.txt";

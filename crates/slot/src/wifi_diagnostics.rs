@@ -202,7 +202,7 @@ fn collect(root: &Path, view: &WifiView) -> String {
     );
     let addr = probe("ip", &["-4", "addr", "show", "dev", "wlan0"], timeout);
     let route = probe("ip", &["-4", "route", "show", "dev", "wlan0"], timeout);
-    let helper_path = root.join("System/slotwifi.sh");
+    let helper_path = root.join("System/wifi.sh");
     let helper = probe(
         "/bin/sh",
         &[helper_path.to_str().unwrap_or(""), "diagnostics"],

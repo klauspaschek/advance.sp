@@ -5,8 +5,8 @@
 # drives one output at a time, the LCD or the HDMI transmitter. Switching goes through the
 # dispdbg debugfs of the sunxi disp2 driver, as NextUI's and the stock firmware's HDMI monitors
 # do, and it must happen while no EGL surface exists: the GPU driver latches the framebuffer's
-# size as the frontend starts. So launch_frontend.sh runs `hdmi.sh sync` before it starts slot,
-# and slot saves the game and ends itself when a cable comes or goes (BaseOS starts it again).
+# size as the frontend starts. So launch_frontend.sh runs `hdmi.sh sync` before it starts advance.sp,
+# and advance.sp saves the game and ends itself when a cable comes or goes (BaseOS starts it again).
 #
 #   sync     make the output match the cable: HDMI with a cable in, the LCD without
 #   on, off  force one
@@ -15,7 +15,7 @@
 #   status   one line for the session log: cable, output, framebuffer and sound route
 #
 # The signal is 1080p60 whatever the TV is. The display engine scales the framebuffer to the
-# whole signal, so on HDMI it is made 16:9 (848x480, a 64-byte aligned row near 853.3) and slot
+# whole signal, so on HDMI it is made 16:9 (848x480, a 64-byte aligned row near 853.3) and advance.sp
 # draws its 720x480 screen in the middle of it, at its own shape. Without a cable this script
 # changes nothing: `sync` on the LCD returns at once.
 #
@@ -28,11 +28,11 @@ FBDEV=${SLOT_HDMI_FBDEV:-/dev/fb0}
 POLL=${SLOT_HDMI_POLL:-0.05}
 EXTCON=${SLOT_HDMI_EXTCON:-/sys/class/extcon/hdmi/state}
 DISP=${SLOT_HDMI_DISP:-/sys/class/disp/disp/attr/sys}
-ROUTE=${SLOT_AUDIO_ROUTE:-/run/slot-audio-device}
+ROUTE=${SLOT_AUDIO_ROUTE:-/run/advance-audio-device}
 HDMI_ROUTE='plughw:CARD=ahubhdmi,DEV=0'
 HDMI_PARAM="4 10 0 0 0x4 0x101 0 0 0 8"
 LCD_PARAM="1 0"
-LCD_SIZE=${SLOT_HDMI_LCD_SIZE:-/run/slot-lcd-size}
+LCD_SIZE=${SLOT_HDMI_LCD_SIZE:-/run/advance-lcd-size}
 TV_SIZE="848 480"
 
 plugged() {

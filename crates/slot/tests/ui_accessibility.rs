@@ -20,7 +20,7 @@ fn light_theme_survives_restart_and_old_vibration_preferences_are_ignored(){
     let d=common::tmp_root_with_carts(&["Approved","Another"]);
     let state=SlotState{clock_set:true,appearance:Appearance::Light,..Default::default()};
     write_slot_state(d.path(),&state).unwrap();
-    let path=d.path().join("Config/slot.state");let mut saved=std::fs::read_to_string(&path).unwrap();
+    let path=d.path().join("Config/advance.state");let mut saved=std::fs::read_to_string(&path).unwrap();
     saved.push_str("ui_vibration=1\ncharging_vibration=1\n");std::fs::write(path,saved).unwrap();
     let app=App::boot(d.path());assert!(app.light());assert_eq!(read_slot_state(d.path()),state);
 }

@@ -1,6 +1,6 @@
 //! Wi-Fi: finding networks, joining them and remembering them.
 //!
-//! On the device `card/System/slotwifi.sh` starts and stops wpa_supplicant, and everything else
+//! On the device `card/System/wifi.sh` starts and stops wpa_supplicant, and everything else
 //! goes straight to the supplicant's control socket, so a password never passes through a shell.
 //! The supplicant never saves networks; the settings vault owns optional encrypted storage.
 //! Its configuration contains only control settings under /run, never credentials. Off the device a pretend radio stands in, so the pages
@@ -11,7 +11,7 @@ use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-pub const WIFI_CONF: &str = "/run/slotwifi.conf";
+pub const WIFI_CONF: &str = "/run/advance-wifi.conf";
 
 /// How often a connected radio is asked how it is doing.
 const POLL: Duration = Duration::from_secs(5);
@@ -130,10 +130,10 @@ impl Wifi {
         let view = Arc::new(Mutex::new(WifiView::default()));
         let shared = view.clone();
         let spawned = std::thread::Builder::new()
-            .name("slot-wifi".into())
+            .name("advance-wifi".into())
             .spawn(move || work(backend, rx, shared));
         if let Err(e) = spawned {
-            eprintln!("slot: wifi: {e}");
+            eprintln!("advance: wifi: {e}");
         }
         Wifi { jobs, view }
     }
@@ -206,7 +206,7 @@ fn work(mut radio: Box<dyn WifiBackend>, jobs: Receiver<Job>, view: Arc<Mutex<Wi
                         address_wait.update(&mut view.lock().unwrap_or_else(|e| e.into_inner()), &status, std::time::Instant::now());
                     }
                     Err(e) => {
-                        eprintln!("slot: wifi: on: {e}");
+                        eprintln!("advance: wifi: on: {e}");
                         set(&|v| {
                             v.busy = Busy::Idle;
                             v.error = Some(e.clone());
@@ -236,7 +236,7 @@ fn work(mut radio: Box<dyn WifiBackend>, jobs: Receiver<Job>, view: Arc<Mutex<Wi
                     secret.zeroize();
                 }
                 if let Err(e) = &joined {
-                    eprintln!("slot: wifi: join {ssid:?}: {e}");
+                    eprintln!("advance: wifi: join {ssid:?}: {e}");
                 }
                 let status = radio.status();
                 // Publish association immediately; do not wait for another scan before DHCP feedback.
@@ -493,7 +493,7 @@ fn backend(root: &Path) -> Box<dyn WifiBackend> {
 
 pub fn conf_path(root: &Path) -> PathBuf {
     let _ = root;
-    PathBuf::from("/run/slotwifi.conf")
+    PathBuf::from("/run/advance-wifi.conf")
 }
 
 /// A pretend radio with a handful of networks in range, for the desktop and the tests. An open
@@ -608,7 +608,7 @@ pub mod ctrl {
         pub fn open(target: &Path) -> std::io::Result<Ctrl> {
             static NEXT: AtomicU32 = AtomicU32::new(0);
             let local = std::env::temp_dir().join(format!(
-                "slot-wpa-{}-{}",
+                "advance-wpa-{}-{}",
                 std::process::id(),
                 NEXT.fetch_add(1, Ordering::Relaxed)
             ));
@@ -700,15 +700,15 @@ mod device {
 
         fn script(&self, args: &[&str]) -> bool {
             Command::new("/bin/sh")
-                .arg(self.root.join("System/slotwifi.sh"))
+                .arg(self.root.join("System/wifi.sh"))
                 .args(args)
                 .status()
                 .is_ok_and(|s| s.success())
         }
 
         fn ctrl(&self) -> Result<Ctrl, String> {
-            if Path::new("/run/slotlink.session").exists()
-                || !Path::new("/run/slotwifi.owner").exists()
+            if Path::new("/run/advance-link.session").exists()
+                || !Path::new("/run/advance-wifi.owner").exists()
             {
                 return Err("Wi-Fi is unavailable during link play".into());
             }

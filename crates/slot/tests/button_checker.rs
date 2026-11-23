@@ -21,7 +21,7 @@ fn held(s: &Session) -> Vec<&'static str> {
 fn session() -> (tempfile::TempDir, Session, u64) {
     let d = common::tmp_root_with_carts(&[]);
     slot_store::write_slot_state(d.path(), &slot_store::SlotState { clock_set: true, ..Default::default() })
-        .expect("write slot.state");
+        .expect("write advance.state");
     let s = Session::boot(d.path().to_owned());
     (d, s, 1000)
 }

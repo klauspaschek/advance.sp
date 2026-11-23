@@ -21,15 +21,15 @@ const DEV_INPUT: &str = "/dev/input";
 
 const RUN_DIR: &str = "/run";
 
-const CARD_LOG: &str = "/data/slot-card.log";
+const CARD_LOG: &str = "/data/advance-card.log";
 
 const REPAIR_SCRIPT: &str = "repair.sh";
 
 const FSCK_EXFAT: &str = "fsck.exfat";
 
-const REPAIR_STAGE: &str = "/tmp/slot-repair";
+const REPAIR_STAGE: &str = "/tmp/advance-repair";
 
-const REPAIR_RESULT: &str = "/data/slot-repair.result";
+const REPAIR_RESULT: &str = "/data/advance-repair.result";
 
 const WIFI_MODULE: &str = "8821cs";
 
@@ -225,9 +225,9 @@ fn device_target<'a>(exported: Option<&'a str>, release: &'a str) -> Option<&'a 
 
 fn ran(what: &str, result: std::io::Result<std::process::ExitStatus>) {
     match result {
-        Ok(status) if status.success() => eprintln!("slot: {what} ok"),
-        Ok(status) => eprintln!("slot: {what} {status}"),
-        Err(e) => eprintln!("slot: {what}: {e}"),
+        Ok(status) if status.success() => eprintln!("advance: {what} ok"),
+        Ok(status) => eprintln!("advance: {what} {status}"),
+        Err(e) => eprintln!("advance: {what}: {e}"),
     }
 }
 
@@ -402,10 +402,10 @@ impl Motor {
             .read(true)
             .write(true)
             .open(Path::new(DEV_INPUT).join(&name))
-            .map_err(|e| eprintln!("slot: rumble {name}: {e}"))
+            .map_err(|e| eprintln!("advance: rumble {name}: {e}"))
             .ok()?;
         let Some(id) = upload(&node, -1) else {
-            eprintln!("slot: rumble {name}: {}", std::io::Error::last_os_error());
+            eprintln!("advance: rumble {name}: {}", std::io::Error::last_os_error());
             return None;
         };
         Some(Motor {
@@ -421,7 +421,7 @@ impl Motor {
             match upload(&self.node, self.id).or_else(|| upload(&self.node, -1)) {
                 Some(id) => self.id = id,
                 None => eprintln!(
-                    "slot: rumble {}: {}",
+                    "advance: rumble {}: {}",
                     self.name,
                     std::io::Error::last_os_error()
                 ),
@@ -439,7 +439,7 @@ impl Motor {
         };
         match (&self.node).write_all(bytes) {
             Ok(()) => self.running = on,
-            Err(e) => eprintln!("slot: rumble: {e}"),
+            Err(e) => eprintln!("advance: rumble: {e}"),
         }
     }
 }
@@ -539,7 +539,7 @@ impl Platform for DevicePlatform {
             if previous_policy.is_some() {
                 fs::write(&policy, b"16")?;
             }
-            let mixer = "/run/slot-sleep-mixer.state";
+            let mixer = "/run/advance-sleep-mixer.state";
             let saved = Command::new("timeout")
                 .args(["-s", "KILL", "3", "alsactl", "-f", mixer, "store"])
                 .status()
@@ -611,7 +611,7 @@ impl Platform for DevicePlatform {
         let value = backlight_value(step, self.max_brightness);
         let write = |file: PathBuf, body: String| {
             if let Err(e) = fs::write(&file, body) {
-                eprintln!("slot: {}: {e}", file.display());
+                eprintln!("advance: {}: {e}", file.display());
             }
         };
         match backlight {
@@ -692,14 +692,14 @@ impl Platform for DevicePlatform {
                         .arg(&m.point)
                         .arg(&m.fs)
                         .exec();
-                    eprintln!("slot: repair: {e}");
+                    eprintln!("advance: repair: {e}");
                 }
             }
             (None, _) => eprintln!(
-                "slot: repair: no block device under {}",
+                "advance: repair: no block device under {}",
                 self.root.display()
             ),
-            (_, Err(e)) => eprintln!("slot: repair: {e}"),
+            (_, Err(e)) => eprintln!("advance: repair: {e}"),
         }
         self.restart()
     }
@@ -750,7 +750,7 @@ impl Platform for DevicePlatform {
         match fs::write(&gadget, &name) {
             Ok(()) => true,
             Err(e) => {
-                eprintln!("slot: adb {}: {e}", gadget.display());
+                eprintln!("advance: adb {}: {e}", gadget.display());
                 false
             }
         }

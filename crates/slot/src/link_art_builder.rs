@@ -10,12 +10,12 @@ impl LinkArtBuilder {
     pub fn spawn() -> Self {
         let (tx, built) = channel();
         let spawned = std::thread::Builder::new()
-            .name("slot-link-art".into())
+            .name("advance-link-art".into())
             .spawn(move || {
                 let _ = tx.send(link_art());
             });
         if let Err(e) = spawned {
-            eprintln!("slot: link art worker: {e}");
+            eprintln!("advance: link art worker: {e}");
         }
         LinkArtBuilder { built }
     }

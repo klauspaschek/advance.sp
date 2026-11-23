@@ -20,7 +20,7 @@ fn old_or_invalid_preferences_follow_the_existing_theme() {
     std::fs::create_dir_all(d.path().join("Config")).unwrap();
     let state = SlotState { appearance: slot_store::Appearance::Light, ..SlotState::default() };
     write_slot_state(d.path(), &state).unwrap();
-    let path = d.path().join("Config/slot.state");
+    let path = d.path().join("Config/advance.state");
     let old: String = std::fs::read_to_string(&path).unwrap().lines()
         .filter(|line| !line.starts_with("shell_colour="))
         .map(|line| format!("{line}\n")).collect();

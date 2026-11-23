@@ -44,7 +44,7 @@ class EncryptionProbe:
         for worker in self.workers:worker.join(timeout=1)
 
 runtime=pathlib.Path(sys.argv[1]).resolve()
-script=pathlib.Path(__file__).resolve().parent/'System/slotsmb.sh'
+script=pathlib.Path(__file__).resolve().parent/'System/smb.sh'
 with tempfile.TemporaryDirectory() as tmp:
     root=pathlib.Path(tmp);root.chmod(0o755) # Match the traversable SD root for unprivileged runtime conversion modules.
     (root/'System').mkdir();shutil.copytree(runtime,root/'System/samba')
@@ -55,12 +55,12 @@ with tempfile.TemporaryDirectory() as tmp:
     env=dict(os.environ,AGS_RUN=str(run),SLOT_SMB_LOADER=str(loader),SLOT_SMB_TEST_PORT='1445',SLOT_SMB_TEST_INTERFACE='lo',GCONV_PATH=str(root/'System/samba/gconv'))
     password='Arcade shelf@2026!'
     subprocess.run(['sh',str(script),'prepare',str(root),'127.0.0.1'],input=password+'\n',env=env,text=True,check=True)
-    config=(run/'slot-smb/smb.conf').read_text()
+    config=(run/'advance-smb/smb.conf').read_text()
     assert 'SMB3_00' in config and 'server smb encrypt = required' in config
-    assert password not in ''.join(p.read_text(errors='replace') for p in (run/'slot-smb').rglob('*') if p.is_file())
+    assert password not in ''.join(p.read_text(errors='replace') for p in (run/'advance-smb').rglob('*') if p.is_file())
     # Test-only diagnostics contain only this disposable fixture's account/session.
-    (run/'slot-smb/smb.conf').write_text(config.replace('log file = /dev/null',f'log file = {run}/slot-smb/test-log.%m').replace('log level = 0','log level = 3'))
-    auth=root/'auth';auth.write_text(f'username = slot\npassword = {password}\n');auth.chmod(0o600)
+    (run/'advance-smb/smb.conf').write_text(config.replace('log file = /dev/null',f'log file = {run}/advance-smb/test-log.%m').replace('log level = 0','log level = 3'))
+    auth=root/'auth';auth.write_text(f'username = advance\npassword = {password}\n');auth.chmod(0o600)
     server=subprocess.Popen(['sh',str(script),'serve',str(root),str(os.getpid())],env=env,start_new_session=True,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE)
     def opened():
         try:
@@ -84,7 +84,7 @@ with tempfile.TemporaryDirectory() as tmp:
         assert enumeration.returncode==0 and 'SDCard' in enumeration.stdout,(enumeration.stdout,enumeration.stderr)
         listing=client('ls');assert all(p in listing for p in ('Games','Wallpapers','Config','System','Saves','Labels','Diagnostics'))
         client(f'get Config/secret {root}/read-back');assert (root/'read-back').read_text()=='PRIVATE CARD CONTENT'
-        bad=root/'bad-auth';bad.write_text('username = slot\npassword = WRONG\n');bad.chmod(0o600)
+        bad=root/'bad-auth';bad.write_text('username = advance\npassword = WRONG\n');bad.chmod(0o600)
         client('ls',False,authfile=bad)
         client('ls',False,protocol='SMB2')
         source=root/'upload.gba';source.write_bytes(bytes(1024))
@@ -117,7 +117,7 @@ with tempfile.TemporaryDirectory() as tmp:
             client(f'get ../secret {root}/leaked',False)
             assert not (root/'leaked').exists() or not (root/'leaked').read_bytes()
     except BaseException:
-        for log in sorted((run/'slot-smb').glob('test-log.*')):
+        for log in sorted((run/'advance-smb').glob('test-log.*')):
             print(f'{log.name}:\n{log.read_text(errors="replace")[-12000:]}',file=sys.stderr)
         raise
     finally:
@@ -127,7 +127,7 @@ with tempfile.TemporaryDirectory() as tmp:
             os.killpg(server.pid,signal.SIGKILL);server.wait()
             raise AssertionError('production stop helper did not terminate the SMB process group')
     assert not opened(),'SMB listener survived shutdown'
-    assert not (run/'slot-smb/smbpasswd').exists(),'runtime password database survived shutdown'
+    assert not (run/'advance-smb/smbpasswd').exists(),'runtime password database survived shutdown'
     # A launcher crash must also close the server without needing the stop helper.
     subprocess.run(['sh',str(script),'prepare',str(root),'127.0.0.1'],input=password+'\n',env=env,text=True,check=True)
     parent=subprocess.Popen(['sleep','30'])

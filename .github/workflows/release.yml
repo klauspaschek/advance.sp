@@ -78,8 +78,8 @@ jobs:
     container: rust:1-bullseye
     env:
       SLOT_SILENT: '1'
-      SLOT_STICKER_PREVIEW: /tmp/slot-about-sticker.png
-      SLOT_KID_UI_PREVIEW: /tmp/slot-parent-previews
+      SLOT_STICKER_PREVIEW: /tmp/advance-about-sticker.png
+      SLOT_KID_UI_PREVIEW: /tmp/advance-parent-previews
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
@@ -122,14 +122,14 @@ jobs:
         with:
           retention-days: 1
           name: parent-controls-previews
-          path: /tmp/slot-parent-previews/*.png
+          path: /tmp/advance-parent-previews/*.png
           if-no-files-found: error
 
       - uses: actions/upload-artifact@v7
         with:
           retention-days: 1
           name: about-sticker-preview
-          path: /tmp/slot-about-sticker.png
+          path: /tmp/advance-about-sticker.png
           if-no-files-found: error
 
       - name: Check emulator source materials
@@ -189,17 +189,17 @@ jobs:
           cat > notes.md <<'NOTES'
           ## Choose your download
 
-          - **[slot.sp-System.zip](../../releases/latest/download/slot.sp-System.zip)** — update an existing slot.sp or advance.sp card. Extract onto the content card (SD2), replacing the `System` files. Your games, saves, wallpapers and configuration stay in their existing folders. The in-app updater installs this same file.
-          - **[slot.sp-SD2.zip](../../releases/latest/download/slot.sp-SD2.zip)** — the full SD2 starter tree for a new setup. Extract its contents onto SD2 after following the [BaseOS setup guide](https://slot-cfw.fyi). This is not a bootable OS image. Use the System ZIP for routine updates.
+          - **[advance.sp-System.zip](../../releases/latest/download/advance.sp-System.zip)** — update an existing slot.sp or advance.sp card. Extract onto the content card (SD2), replacing the `System` files. Your games, saves, wallpapers and configuration stay in their existing folders. The in-app updater installs this same file; a card with an advance.sp release from before 23 November 2026 needs this one copy by hand, as those releases looked for the old slot.sp file name.
+          - **[advance.sp-SD2.zip](../../releases/latest/download/advance.sp-SD2.zip)** — the full SD2 starter tree for a new setup. Extract its contents onto SD2 after following the [BaseOS setup guide](https://slot-cfw.fyi). This is not a bootable OS image. Use the System ZIP for routine updates.
           - **SHA256SUMS** — download checksums. **build-info.json** identifies the exact source commit and build.
 
           Back up your card and shut down the handheld before updating. No ROMs or BIOS files are included. Games must be unzipped.
 
           ## advance.sp
 
-          slot.sp for the RG SP, extended with Bluetooth game controllers (pairing, a Nintendo or Xbox face-button layout, screenshot, save/load state, volume and screen-size shortcuts on the extra buttons, a button checker, and waking from light sleep), a Bluetooth tile for the radio, headphones and controllers, headphone volume buttons that stay in step with the handheld, a new boot logo, and HDMI output to a TV through the mini HDMI port (the picture and sound follow the cable mid-game; with the TV's sound, optional TV bezels from your card, and the shader off on the TV). See the [README](https://github.com/klauspaschek/advance.sp#readme) for details.
+          A launcher for the RG SP built on slot.sp, extended with Bluetooth game controllers (pairing, a Nintendo or Xbox face-button layout, screenshot, save/load state, volume and screen-size shortcuts on the extra buttons, a button checker, and waking from light sleep), a Bluetooth tile for the radio, headphones and controllers, headphone volume buttons that stay in step with the handheld, a new boot logo, and HDMI output to a TV through the mini HDMI port (the picture and sound follow the cable mid-game; with the TV's sound, optional TV bezels from your card, and the shader off on the TV). See the [README](https://github.com/klauspaschek/advance.sp#readme) for details.
 
-          Built and regression-tested on ARM64; slot, mGBA and gpSP are verified AArch64 binaries. Tested on an RG SP; other handhelds slot.sp supports are untested.
+          Built and regression-tested on ARM64; advance.sp, mGBA and gpSP are verified AArch64 binaries. Tested on an RG SP; other handhelds slot.sp supports are untested.
 
           mGBA (MPL-2.0) and gpSP (GPL-2.0) licenses, provenance, patches, and gpSP's source archive are bundled in `System/licenses`. See the repository for the GPL-3.0-or-later source and credits to slot.sp, slot, Cartridge and BaseOS.
           NOTES

@@ -400,7 +400,7 @@ impl Manager {
         }
         .into();
         static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-        let cancel = std::env::temp_dir().join(format!("slot-bt-{}-{}.cancel", std::process::id(), NEXT.fetch_add(1,Ordering::Relaxed)));
+        let cancel = std::env::temp_dir().join(format!("advance-bt-{}-{}.cancel", std::process::id(), NEXT.fetch_add(1,Ordering::Relaxed)));
         let _ = std::fs::remove_file(&cancel);
         self.cancel_path = Some(cancel.clone());
         let bluetooth_available = self.bluetooth_available;
@@ -1162,7 +1162,7 @@ pub fn fallback_to_local(root: PathBuf, address: String) {
     std::thread::spawn(move || {
         let result = run(root, "fallback", Some(address));
         if result.status.starts_with("Error:") {
-            eprintln!("slot: {}", result.status);
+            eprintln!("advance: {}", result.status);
         }
     });
 }
@@ -1240,7 +1240,7 @@ fn run_cancel(root: PathBuf, verb: &str, address: Option<String>, cancel: Option
         _ => None,
     };
     if let Some(mut report) = fallback {
-        if let Ok(mut file) = std::fs::File::open(root.join("Logs/slot.log")) {
+        if let Ok(mut file) = std::fs::File::open(root.join("Logs/advance.log")) {
             use std::io::{Read, Seek, SeekFrom};
             let size = file.metadata().map_or(0, |m| m.len());
             let _ = file.seek(SeekFrom::Start(size.saturating_sub(65536)));
@@ -2441,7 +2441,7 @@ impl Events {
                 // Cancel only our automatic helper, never a manual pairing.
                 let lock = std::env::var_os("SLOT_BT_LOCK")
                     .map(PathBuf::from)
-                    .unwrap_or_else(|| PathBuf::from("/run/slot-bluetooth.lock"));
+                    .unwrap_or_else(|| PathBuf::from("/run/advance-bluetooth.lock"));
                 if std::fs::read_to_string(lock.join("verb"))
                     .is_ok_and(|v| matches!(v.trim(), "restore" | "reconnect"))
                 {
@@ -2604,7 +2604,7 @@ impl Reconnect {
                     let status = outcome.unwrap_or_default();
                     let why = status.strip_prefix("Error: ").unwrap_or_default();
                     if !why.is_empty() && why != self.said {
-                        eprintln!("slot: headphone reconnect: {why}");
+                        eprintln!("advance: headphone reconnect: {why}");
                     }
                     self.said = why.to_owned();
                 }
@@ -2696,7 +2696,7 @@ impl Indicator {
         }
         let path = std::env::var_os("SLOT_AUDIO_ROUTE")
             .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("/run/slot-audio-device"));
+            .unwrap_or_else(|| PathBuf::from("/run/advance-audio-device"));
         let route = std::fs::read_to_string(path).unwrap_or_default();
         let address = route_address(&route).unwrap_or_default().to_owned();
         if address != self.output {
@@ -2869,7 +2869,7 @@ pub fn probe(root: &std::path::Path) -> Option<Receiver<bool>> {
             let verb = startup_verb(&root);
             let result = run(root, verb, None);
             if result.status.starts_with("Error:") {
-                eprintln!("slot: headphone reconnect unavailable");
+                eprintln!("advance: headphone reconnect unavailable");
             }
         }
     });

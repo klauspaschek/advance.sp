@@ -156,7 +156,7 @@ fn the_cards_setting_reaches_the_core_through_the_session() {
             colour_correction_gba: colour,
             ..SlotState::default()
         };
-        write_slot_state(d.path(), &state).expect("write slot.state");
+        write_slot_state(d.path(), &state).expect("write advance.state");
 
         let mut s = Session::boot(d.path().to_path_buf());
         s.feed([RawEvent::Down(Btn::A)], 16);

@@ -17,10 +17,10 @@ const LOG_SYNC: Duration = Duration::from_secs(1);
 pub fn run() {
     slot::boot_time::mark("start");
     let _ = std::thread::Builder::new()
-        .name("slot-fonts".into())
+        .name("advance-fonts".into())
         .spawn(slot_ui::warm_fonts);
     let audio = std::thread::Builder::new()
-        .name("slot-audio-open".into())
+        .name("advance-audio-open".into())
         .spawn(slot::audio::opened_sink);
     let root = std::env::var_os("SLOT_ROOT")
         .map(PathBuf::from)
@@ -28,7 +28,7 @@ pub fn run() {
     let mut surface = match FbdevSurface::new() {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("slot: {e}");
+            eprintln!("advance: {e}");
             return;
         }
     };
@@ -36,7 +36,7 @@ pub fn run() {
     let mut compositor = match Compositor::new(&surface) {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("slot: {e}");
+            eprintln!("advance: {e}");
             return;
         }
     };
@@ -63,29 +63,29 @@ pub fn run() {
     let turned = turn != PanelTurn::None;
     let window = if turned { (panel.1, panel.0) } else { panel };
     eprintln!(
-        "slot: baseos target {}, model {}, rotation ccw {}",
+        "advance: baseos target {}, model {}, rotation ccw {}",
         slot::baseos::var("BASEOS_TARGET").unwrap_or_default(),
         slot::baseos::var("BASEOS_MODEL").unwrap_or_default(),
         slot::baseos::var("BASEOS_PANEL_ROTATION_CCW").unwrap_or_default()
     );
     eprintln!(
-        "slot: panel {}x{}, canvas {}x{}, turn {turn:?}",
+        "advance: panel {}x{}, canvas {}x{}, turn {turn:?}",
         panel.0, panel.1, window.0, window.1
     );
     if on_tv {
         eprintln!(
-            "slot: hdmi: framebuffer {}x{}, the screen centred in it",
+            "advance: hdmi: framebuffer {}x{}, the screen centred in it",
             framebuffer.0, framebuffer.1
         );
     }
     if turned {
         if let Err(e) = compositor.set_panel_turn(panel, turn == PanelTurn::Ccw) {
-            eprintln!("slot: {e}");
+            eprintln!("advance: {e}");
             return;
         }
     }
     let platform = DevicePlatform::new(root.clone());
-    eprintln!("slot: {}", platform.report());
+    eprintln!("advance: {}", platform.report());
     platform.trace_boot();
     slot::boot_time::mark("platform");
     let sink = match audio.map(|h| h.join()) {
@@ -108,13 +108,13 @@ pub fn run() {
     slot::boot_time::mark("input");
     let card = root.clone();
     let _ = std::thread::Builder::new()
-        .name("slot-bootlogo".into())
+        .name("advance-bootlogo".into())
         .spawn(move || {
             slot::bootlogo::refresh(&card);
             slot::root::sweep_temps(&card);
         });
     let _ = std::thread::Builder::new()
-        .name("slot-logsync".into())
+        .name("advance-logsync".into())
         .spawn(sync_log_writes);
     let mut drawn = false;
     frontend.drive_emulator();
@@ -151,7 +151,7 @@ pub fn run() {
             drop(compositor);
             drop(surface);
             let e = slot::hdmi::relaunch(&root, on_tv);
-            eprintln!("slot: hdmi: could not run the launcher again: {e}");
+            eprintln!("advance: hdmi: could not run the launcher again: {e}");
             return;
         }
         if frontend.restarting() {
@@ -165,7 +165,7 @@ pub fn run() {
             return;
         }
         if slot::crash::stopping() {
-            eprintln!("slot: told to stop, saving first");
+            eprintln!("advance: told to stop, saving first");
             frontend.stop();
             return;
         }
@@ -188,7 +188,7 @@ pub fn run() {
         frontend.render(&mut compositor, window);
         let swap = Instant::now();
         if let Err(e) = surface.swap() {
-            eprintln!("slot: {e}");
+            eprintln!("advance: {e}");
             frontend.stop();
             return;
         }
@@ -198,7 +198,7 @@ pub fn run() {
             frames += 1;
             if frames == 600 {
                 eprintln!(
-                    "slot: pace: {frames} presents, {steps} steps, {:.2} presents/s, {:.2} nominal fps, {} missed game periods",
+                    "advance: pace: {frames} presents, {steps} steps, {:.2} presents/s, {:.2} nominal fps, {} missed game periods",
                     frames as f64 / said.elapsed().as_secs_f64(),
                     1.0 / frontend.frame_clock().period.as_secs_f64(),
                     pacer.dropped

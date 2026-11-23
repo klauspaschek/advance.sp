@@ -231,7 +231,7 @@ fn launch(root: &Path, start: Start) -> Result<Running, &'static str> {
             process::{Command, Stdio},
             time::Duration,
         };
-        let script = root.join("System/slotsmb.sh");
+        let script = root.join("System/smb.sh");
         let mut setup = Command::new("sh")
             .arg(&script)
             .arg("prepare")

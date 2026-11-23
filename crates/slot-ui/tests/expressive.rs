@@ -181,6 +181,8 @@ fn interface_copy_preserves_case_and_uses_sentence_case_for_authored_labels() {
         ("Kid Mode", "Kid mode"),
         ("USB Audio", "USB audio"),
         ("Left Stick as D-Pad", "Left stick as D-Pad"),
+        ("Installed BaseOS", "Installed BaseOS"),
+        ("Installed advance.sp", "Installed advance.sp"),
     ] {
         assert_eq!(menu_sentence_case(from), to);
     }

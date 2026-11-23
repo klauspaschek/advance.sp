@@ -3,9 +3,9 @@ set -u
 
 SD="${SLOT_ROOT:-/mnt/sdcard}"
 PSY="${AGS_PSY:-/sys/class/power_supply/axp2202-battery}"
-SLOT_STATE="${AGS_SLOT_STATE:-$SD/Config/slot.state}"
+SLOT_STATE="${AGS_SLOT_STATE:-$SD/Config/advance.state}"
 TRACE="${AGS_TRACE:-$SD/Logs/ags-shutdown-trace.log}"
-CLOSED="${AGS_LID_CLOSED:-/run/slot-lid.closed}"
+CLOSED="${AGS_LID_CLOSED:-/run/advance-lid.closed}"
 UPTIME="${AGS_UPTIME:-/proc/uptime}"
 INTERVAL="${AGS_LID_INTERVAL:-5}"
 GRACE="${AGS_LID_GRACE:-60}"
@@ -48,7 +48,7 @@ unload_wifi() {
 }
 
 power_off() {
-	echo "$(date +%s) lid: closed ${1}s and slot has not powered off, powering off" >> "$TRACE" 2>/dev/null
+	echo "$(date +%s) lid: closed ${1}s and advance.sp has not powered off, powering off" >> "$TRACE" 2>/dev/null
 	$SYNC
 	unload_wifi
 	$SYNC

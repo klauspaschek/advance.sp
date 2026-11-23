@@ -18,7 +18,7 @@ impl Sha256 {
 pub const STAGING: &str = "System.new";
 pub const MANIFEST: &str = ".manifest";
 const REQUIRED: [&str; 4] = [
-    "slot",
+    "advance",
     "launch_frontend.sh",
     "mgba_libretro.so",
     "gpsp_libretro.so",
@@ -84,7 +84,7 @@ fn asset(v:&serde_json::Value,repo:&str,name:&str,kind:Kind)->Result<Release,Upd
 pub fn parse_release(json:&str)->Result<Release,UpdateFail> {
     let v=release_json(json)?;
     let source=v["target_commitish"].as_str().filter(|s|s.len()==40&&s.bytes().all(|c|c.is_ascii_hexdigit())).ok_or(UpdateFail::Bad)?;
-    let mut r=asset(&v,SLOT_REPO,"slot.sp-System.zip",Kind::Slot)?;
+    let mut r=asset(&v,SLOT_REPO,"advance.sp-System.zip",Kind::Slot)?;
     r.source=source.into();Ok(r)
 }
 pub fn parse_baseos(json:&str,target:&str,running:&str)->Option<Release> {
@@ -185,7 +185,7 @@ fn unpack(dir: &Path, zip: &[u8], release:&Release) -> Result<(), UpdateFail> {
         return Err(UpdateFail::Bad);
     }
     let meta:serde_json::Value=serde_json::from_slice(&std::fs::read(dir.join("build-info.json")).map_err(|_|UpdateFail::Bad)?).map_err(|_|UpdateFail::Bad)?;
-    if meta["product"]!="slot.sp" || meta["repository"]!=SLOT_REPO || meta["architecture"]!="aarch64" || meta["source_commit"]!=release.source {return Err(UpdateFail::Bad);}
+    if meta["product"]!="advance.sp" || meta["repository"]!=SLOT_REPO || meta["architecture"]!="aarch64" || meta["source_commit"]!=release.source {return Err(UpdateFail::Bad);}
     let mut manifest = listed.join("\n");
     manifest.push('\n');
     slot_store::atomic_write(&dir.join(MANIFEST), manifest.as_bytes()).map_err(|_| UpdateFail::Bad)
@@ -824,7 +824,7 @@ pub(crate) fn agent(timeout: Duration) -> ureq::Agent {
         .timeout_connect(Some(CONNECT_TIMEOUT))
         .timeout_global(Some(timeout))
         .user_agent(format!(
-            "slot/{}",
+            "advance.sp/{}",
             crate::build_info::Build::current().version
         ))
         .build()

@@ -29,7 +29,7 @@ impl StateWriter {
         let worker = shared.clone();
         let flag = failing.clone();
         let threaded = thread::Builder::new()
-            .name("slot-state".into())
+            .name("advance-state".into())
             .spawn(move || work(&worker, &flag))
             .is_ok();
         StateWriter {
@@ -112,9 +112,9 @@ fn work(shared: &Shared, failing: &CardWrites) {
 fn write(root: &Path, state: &SlotState, failing: &CardWrites) {
     let written = write_slot_state(root, state);
     if let Err(e) = &written {
-        eprintln!("slot: slot.state: {e}");
+        eprintln!("advance: advance.state: {e}");
     }
-    failing.wrote("slot.state", &written);
+    failing.wrote("advance.state", &written);
 }
 
 fn write_history(root: &Path, history: &PlayHistory, failing: &CardWrites) {

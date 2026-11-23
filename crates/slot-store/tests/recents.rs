@@ -87,7 +87,7 @@ fn the_setting_and_the_list_survive_a_restart() {
 fn a_card_written_before_recents_reads_with_them_off() {
     let d = tmp_root();
     write_slot_state(d.path(), &clocked()).unwrap();
-    let path = d.path().join("Config/slot.state");
+    let path = d.path().join("Config/advance.state");
     let text = std::fs::read_to_string(&path).unwrap();
     let old: String = text
         .lines()

@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, io, path::Path};
 use crate::{atomic_write, Cart, Platform};
 
 const FILE: &str = "Config/play-history.txt";
-const HEADER: &str = "slot-play-history-v1";
+const HEADER: &str = "advance-play-history-v1";
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum FavoriteSort {

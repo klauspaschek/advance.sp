@@ -99,7 +99,7 @@ fn a_settings_write_that_lands_does_not_hide_a_save_that_failed() {
     a.tick_ms(312_100);
     assert!(
         a.card_alarm(),
-        "slot.state writing fine cleared the alarm for a save that still is not"
+        "advance.state writing fine cleared the alarm for a save that still is not"
     );
 }
 

@@ -5,7 +5,7 @@ use std::sync::Mutex;
 
 use slot_store::{atomic_write, format_stamp};
 
-pub const CARD_LOG_NAME: &str = "slot-card.log";
+pub const CARD_LOG_NAME: &str = "advance-card.log";
 
 const CARD_LOG_MAX: u64 = 256 * 1024;
 
