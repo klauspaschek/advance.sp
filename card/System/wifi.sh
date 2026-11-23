@@ -1,11 +1,11 @@
 #!/bin/sh
-# Wi-Fi for slot: starts and stops wpa_supplicant on wlan0 and keeps a DHCP lease while it is
+# Wi-Fi for advance.sp: starts and stops wpa_supplicant on wlan0 and keeps a DHCP lease while it is
 # connected. Slot talks to the supplicant itself over its control socket for scanning and
 # joining; this only does what needs a shell.
 #
-#   slotwifi.sh up CONF     start the supplicant on CONF, and the watcher that runs DHCP
-#   slotwifi.sh down        stop both, release the lease and turn the radio off
-#   slotwifi.sh wlan0 CONNECTED|DISCONNECTED
+#   wifi.sh up CONF     start the supplicant on CONF, and the watcher that runs DHCP
+#   wifi.sh down        stop both, release the lease and turn the radio off
+#   wifi.sh wlan0 CONNECTED|DISCONNECTED
 #                           what wpa_cli's watcher calls as the link comes and goes
 set -u
 
@@ -19,11 +19,11 @@ IP="${AGS_IP:-ip}"
 RFKILL="${AGS_RFKILL:-rfkill}"
 WAIT_S="${AGS_WIFI_WAIT_S:-5}"
 
-LINK_MARK="$RUN/slotlink.session"
+LINK_MARK="$RUN/advance-link.session"
 LINK_WAIT_S="${AGS_WIFI_LINK_WAIT_S:-10}"
-WATCH_PID="$RUN/slotwifi-watch.pid"
-LEASE_PID="$RUN/slotwifi-udhcpc.pid"
-OWNER="$RUN/slotwifi.owner"
+WATCH_PID="$RUN/advance-wifi-watch.pid"
+LEASE_PID="$RUN/advance-wifi-udhcpc.pid"
+OWNER="$RUN/advance-wifi.owner"
 
 stop_pid() {
 	[ -f "$1" ] || return 0
@@ -32,10 +32,10 @@ stop_pid() {
 }
 
 wifi_up() {
-	conf="$RUN/slotwifi.conf"
+	conf="$RUN/advance-wifi.conf"
 	[ ! -f "$LINK_MARK" ] || return 1
 	umask 077
-	# A link session owns wlan0 until slotlink.sh takes it down and clears its mark.
+	# A link session owns wlan0 until link.sh takes it down and clears its mark.
 	m=0
 	while [ -f "$LINK_MARK" ] && [ "$m" -lt $((LINK_WAIT_S * 4)) ]; do
 		sleep 0.25 2>/dev/null || sleep 1
@@ -76,7 +76,7 @@ wifi_up() {
 }
 
 stop_sharing() {
-    helper="$(dirname "$0")/slotsmb.sh"
+    helper="$(dirname "$0")/smb.sh"
     [ ! -f "$helper" ] || sh "$helper" stop >/dev/null 2>&1 || true
 }
 
@@ -90,7 +90,7 @@ wifi_down() {
 	$IP addr flush dev wlan0 2>/dev/null || true
 	$IP link set wlan0 down 2>/dev/null || true
 	$RFKILL block wifi 2>/dev/null || true
-	/bin/rm -f "$RUN/slotwifi.conf"
+	/bin/rm -f "$RUN/advance-wifi.conf"
 	return 0
 }
 
@@ -134,7 +134,7 @@ case "${1:-} ${2:-}" in
 	$IP addr flush dev wlan0 2>/dev/null || true
 	;;
 *)
-	echo "usage: slotwifi.sh up CONF | down" >&2
+	echo "usage: wifi.sh up CONF | down" >&2
 	exit 2
 	;;
 esac

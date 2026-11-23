@@ -281,7 +281,7 @@ fn commit_layer(fb: (u32, u32), win: Rect) {
             }
             commit(&mut config, fb, win);
             if ioctl(fd, DISP_LAYER_SET_CONFIG, param.as_ptr()) < 0 {
-                eprintln!("slot: hdmi: layer set refused");
+                eprintln!("advance: hdmi: layer set refused");
                 break;
             }
             std::thread::sleep(Duration::from_millis(100));
@@ -294,7 +294,7 @@ fn commit_layer(fb: (u32, u32), win: Rect) {
                 break;
             }
             eprintln!(
-                "slot: hdmi: layer reads back {}x{} crop y {} for fb {}x{}",
+                "advance: hdmi: layer reads back {}x{} crop y {} for fb {}x{}",
                 back.info.screen_win.width,
                 back.info.screen_win.height,
                 back.info.fb.crop.y,

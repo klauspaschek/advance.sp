@@ -28,7 +28,7 @@ fn boot(root: &Path, show_titles: bool) -> App {
             ..SlotState::default()
         },
     )
-    .expect("write slot.state");
+    .expect("write advance.state");
     let mut a = App::boot(root);
     a.set_shelf_title_face(TexId::from_raw(TITLE), 120);
     a.set_shelf_platform_face(TexId::from_raw(RACK), 80);

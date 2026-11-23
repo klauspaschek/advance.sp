@@ -65,7 +65,7 @@ pub fn sweep_temps(dir: &Path) {
             Ok(t) if t.is_dir() => sweep_temps(&path),
             Ok(t) if t.is_file() && left_by_another_run(&entry.file_name().to_string_lossy()) => {
                 if let Err(e) = std::fs::remove_file(&path) {
-                    eprintln!("slot: temp sweep: {}: {e}", path.display());
+                    eprintln!("advance: temp sweep: {}: {e}", path.display());
                 }
             }
             _ => {}

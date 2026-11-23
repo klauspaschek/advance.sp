@@ -17,7 +17,7 @@ def package(root: Path, output: Path, source: str) -> None:
     if output == root or root in output.parents:
         raise ValueError('output must be outside the card tree')
     system = root / 'System'
-    for name in ('slot', 'mgba_libretro.so', 'gpsp_libretro.so', 'fsck.exfat'):
+    for name in ('advance', 'mgba_libretro.so', 'gpsp_libretro.so', 'fsck.exfat'):
         binary = system / name
         header = binary.read_bytes()[:20]
         if len(header) < 20 or header[:6] != b'\x7fELF\x02\x01' or int.from_bytes(header[18:20], 'little') != 183:
@@ -35,9 +35,9 @@ def package(root: Path, output: Path, source: str) -> None:
         raise ValueError('missing executable private registry RPC worker wrapper')
     if not (system / 'samba/lib/ld-linux-aarch64.so.1').is_file():
         raise ValueError('missing private Samba loader')
-    if not (system / 'slot').stat().st_mode & 0o111:
-        raise ValueError('System/slot must be executable')
-    if not (system / 'slotwifi.sh').stat().st_mode & 0o111:
+    if not (system / 'advance').stat().st_mode & 0o111:
+        raise ValueError('System/advance must be executable')
+    if not (system / 'wifi.sh').stat().st_mode & 0o111:
         raise ValueError('Wi-Fi DHCP callback must be executable')
     licenses = system / 'licenses'
     if not any(licenses.glob('gpsp-*.tar.gz')) or not any(licenses.glob('gpsp-*.meta')) or not any(licenses.glob('mgba-*.meta')):
@@ -47,16 +47,16 @@ def package(root: Path, output: Path, source: str) -> None:
     if not any(licenses.glob('exfatprogs-*.tar.gz')) or not (licenses / 'exfatprogs-GPL-2.0.txt').is_file():
         raise ValueError('missing SD repair tool source or license')
     metadata = {
-        'product': 'slot.sp',
-        'repository': os.environ.get('GITHUB_REPOSITORY', 'jgraving/slot'),
+        'product': 'advance.sp',
+        'repository': os.environ.get('GITHUB_REPOSITORY', 'klauspaschek/advance.sp'),
         'source_commit': source,
         'architecture': 'aarch64',
-        'run_url': f'https://github.com/{os.environ.get("GITHUB_REPOSITORY", "jgraving/slot")}/actions/runs/{os.environ.get("GITHUB_RUN_ID", "local")}',
+        'run_url': f'https://github.com/{os.environ.get("GITHUB_REPOSITORY", "klauspaschek/advance.sp")}/actions/runs/{os.environ.get("GITHUB_RUN_ID", "local")}',
     }
     (system / 'build-info.json').write_text(json.dumps(metadata, indent=2) + '\n')
     output.mkdir(parents=True, exist_ok=True)
     (output / 'build-info.json').write_bytes((system / 'build-info.json').read_bytes())
-    for filename, subtree in [('slot.sp-System.zip', system), ('slot.sp-SD2.zip', root)]:
+    for filename, subtree in [('advance.sp-System.zip', system), ('advance.sp-SD2.zip', root)]:
         with zipfile.ZipFile(output / filename, 'w', zipfile.ZIP_DEFLATED) as archive:
             for path in sorted(subtree.rglob('*')):
                 if path.is_symlink():
@@ -65,20 +65,20 @@ def package(root: Path, output: Path, source: str) -> None:
         with zipfile.ZipFile(output / filename) as archive:
             if archive.testzip() is not None:
                 raise ValueError(f'corrupt archive: {filename}')
-            if 'System/slot' not in archive.namelist():
+            if 'System/advance' not in archive.namelist():
                 raise ValueError(f'incorrect archive layout: {filename}')
     # Remove aliases left by an earlier build when reusing an output directory.
-    for name in ('slot-System.zip', 'slot-SD2.zip'):
+    for name in ('slot-System.zip', 'slot-SD2.zip', 'slot.sp-System.zip', 'slot.sp-SD2.zip', 'slot.sp-network-sources.zip'):
         (output / name).unlink(missing_ok=True)
     sources = Path('vendor/samba-sources')
     if not (sources / 'dependency-sources.tsv').is_file():
         raise ValueError('missing network-sharing corresponding source')
-    with zipfile.ZipFile(output / 'slot.sp-network-sources.zip', 'w', zipfile.ZIP_DEFLATED) as archive:
+    with zipfile.ZipFile(output / 'advance.sp-network-sources.zip', 'w', zipfile.ZIP_DEFLATED) as archive:
         for path in sorted(sources.rglob('*')):
             if path.is_file(): archive.write(path, path.relative_to(sources))
-    if (output / 'slot.sp-System.zip').stat().st_size > 64 * 1024 * 1024:
+    if (output / 'advance.sp-System.zip').stat().st_size > 64 * 1024 * 1024:
         raise ValueError('System archive exceeds the OTA download limit')
-    files = ['slot.sp-network-sources.zip', 'slot.sp-System.zip', 'slot.sp-SD2.zip', 'build-info.json']
+    files = ['advance.sp-network-sources.zip', 'advance.sp-System.zip', 'advance.sp-SD2.zip', 'build-info.json']
     (output / 'SHA256SUMS').write_text(''.join(
         f'{hashlib.sha256((output / name).read_bytes()).hexdigest()}  {name}\n' for name in files
     ))

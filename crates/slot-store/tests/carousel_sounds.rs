@@ -7,7 +7,7 @@ fn carousel_sound_preference_migrates_and_persists() {
     let s = SlotState { carousel_sounds: false, ..SlotState::default() };
     write_slot_state(d.path(), &s).unwrap();
     assert!(!read_slot_state(d.path()).carousel_sounds);
-    let p = d.path().join("Config/slot.state");
+    let p = d.path().join("Config/advance.state");
     let old = std::fs::read_to_string(&p).unwrap().lines()
         .filter(|l| !l.starts_with("carousel_sounds="))
         .map(|l| format!("{l}\n")).collect::<String>();

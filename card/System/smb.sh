@@ -4,7 +4,7 @@ set -eu
 # Never write SMB session material to a card crash dump.
 ulimit -c 0
 RUN="${AGS_RUN:-/run}"
-STATE="$RUN/slot-smb"
+STATE="$RUN/advance-smb"
 SELF="$0"
 
 stop_share() {
@@ -12,7 +12,7 @@ stop_share() {
         pid="$(cat "$STATE/owner")"
         case "$pid" in ''|*[!0-9]*) return 1;; esac
         # Only terminate our own supervisor group, never a recycled or unrelated PID.
-        if [ -r "/proc/$pid/cmdline" ] && tr '\000' ' ' < "/proc/$pid/cmdline" | grep -F 'slotsmb.sh serve ' >/dev/null; then
+        if [ -r "/proc/$pid/cmdline" ] && tr '\000' ' ' < "/proc/$pid/cmdline" | grep -F 'smb.sh serve ' >/dev/null; then
             kill -TERM "-$pid" 2>/dev/null || true
         fi
     fi
@@ -51,13 +51,13 @@ if [ "$1" = prepare ]; then
     case "$password" in *[![:print:]]*) exit 1;; esac
     extra=
     if IFS= read -r extra || [ -n "$extra" ]; then exit 1; fi
-    printf 'nobody = slot\n' > "$STATE/users"
+    printf 'nobody = advance\n' > "$STATE/users"
     cat > "$STATE/smb.conf" <<CONF
 [global]
     server role = standalone server
     security = user
     workgroup = WORKGROUP
-    netbios name = SLOTSP
+    netbios name = ADVANCESP
     server string = advance.sp
     interfaces = $address/32
     bind interfaces only = yes
@@ -122,7 +122,7 @@ rpc=$!
 samba smbd --foreground --no-process-group --configfile="$STATE/smb.conf" &
 server=$!
 samba wsdd2 -4 -i "${SLOT_SMB_TEST_INTERFACE:-wlan0}" -H SLOTSP -N SLOTSP -G WORKGROUP &
-# Close the entire group if slot crashes, or if the Wi-Fi hook revokes this session.
+# Close the entire group if advance.sp crashes, or if the Wi-Fi hook revokes this session.
 (
     while kill -0 "$parent" 2>/dev/null && kill -0 "$server" 2>/dev/null && kill -0 "$rpc" 2>/dev/null && [ -f "$STATE/owner" ]; do sleep 1; done
     kill -TERM "-$$" 2>/dev/null || true

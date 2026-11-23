@@ -10,7 +10,7 @@ pub struct Device {
 pub fn route_path() -> PathBuf {
     std::env::var_os("SLOT_AUDIO_ROUTE")
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("/run/slot-audio-device"))
+        .unwrap_or_else(|| PathBuf::from("/run/advance-audio-device"))
 }
 
 pub fn valid_route(route: &str) -> bool {

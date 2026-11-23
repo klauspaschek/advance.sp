@@ -7,8 +7,8 @@ import subprocess
 import tempfile
 import unittest
 
-INSTALLER = Path(__file__).resolve().parent / 'System/slotupdate.sh'
-FILES = ['slot', 'launch_frontend.sh', 'mgba_libretro.so', 'gpsp_libretro.so', 'build-info.json', 'samba/bin/smbd', 'slotupdate.sh']
+INSTALLER = Path(__file__).resolve().parent / 'System/update.sh'
+FILES = ['advance', 'launch_frontend.sh', 'mgba_libretro.so', 'gpsp_libretro.so', 'build-info.json', 'samba/bin/smbd', 'update.sh']
 
 class Recovery(unittest.TestCase):
     def setUp(self):
@@ -84,7 +84,7 @@ class Recovery(unittest.TestCase):
                 try:
                     outside=fixture.root/'outside'; outside.mkdir(); (outside/'sentinel').write_bytes(b'keep')
                     if where=='temporary':
-                        p=fixture.system/'gpsp_libretro.so.slot-update'; p.mkdir()
+                        p=fixture.system/'gpsp_libretro.so.advance-update'; p.mkdir()
                         (p/'gpsp_libretro.so').symlink_to(outside/'sentinel')
                     elif where=='leaf':
                         p=fixture.system/'gpsp_libretro.so'; p.unlink(); p.mkdir()
@@ -92,7 +92,7 @@ class Recovery(unittest.TestCase):
                         p=(fixture.system if where=='destination' else fixture.new)/'samba'
                         shutil.rmtree(p); p.symlink_to(outside, target_is_directory=True)
                     self.assertNotEqual(fixture.run_installer(),0)
-                    self.assertEqual((fixture.system/'slot').read_bytes(),b'old')
+                    self.assertEqual((fixture.system/'advance').read_bytes(),b'old')
                     self.assertEqual(list(outside.iterdir()),[outside/'sentinel'])
                     self.assertEqual((outside/'sentinel').read_bytes(),b'keep')
                     fixture.preserved()
@@ -118,7 +118,7 @@ class Recovery(unittest.TestCase):
     def test_interrupted_cleanup_does_not_block_a_completed_install(self):
         bin_dir=self.root/'bin'; bin_dir.mkdir()
         script=bin_dir/'rm'
-        script.write_text('#!/bin/sh\nif [ "$1" = -rf ]; then\n '+shutil.which('rm')+' -f "$2/slot"\n kill -KILL "$PPID"\n exit 1\nfi\nexec '+shutil.which('rm')+' "$@"\n')
+        script.write_text('#!/bin/sh\nif [ "$1" = -rf ]; then\n '+shutil.which('rm')+' -f "$2/advance"\n kill -KILL "$PPID"\n exit 1\nfi\nexec '+shutil.which('rm')+' "$@"\n')
         script.chmod(0o755)
         self.env['PATH']=str(bin_dir)+os.pathsep+os.environ['PATH']
         self.assertNotEqual(self.run_installer(),0)

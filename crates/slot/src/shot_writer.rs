@@ -42,7 +42,7 @@ impl ShotWriter {
         let worker = shared.clone();
         let writes = card_writes.clone();
         let threaded = thread::Builder::new()
-            .name("slot-shot".into())
+            .name("advance-shot".into())
             .spawn(move || work(&worker, &writes))
             .is_ok();
         ShotWriter {
@@ -150,7 +150,7 @@ fn run(job: &Job, card_writes: &CardWrites) -> bool {
         Job::Remove(path) => {
             let removed = std::fs::remove_file(path);
             if let Err(e) = &removed {
-                eprintln!("slot: delete screenshot: {}: {e}", path.display());
+                eprintln!("advance: delete screenshot: {}: {e}", path.display());
             }
             card_writes.wrote("delete screenshot", &removed);
             true
@@ -161,7 +161,7 @@ fn run(job: &Job, card_writes: &CardWrites) -> bool {
 fn write(shot: &Shot, card_writes: &CardWrites) -> bool {
     let written = encode(shot).and_then(|png| store(&shot.path, &png));
     if let Err(e) = &written {
-        eprintln!("slot: screenshot: {}: {e}", shot.path.display());
+        eprintln!("advance: screenshot: {}: {e}", shot.path.display());
     }
     card_writes.wrote("screenshot", &written);
     written.is_ok()

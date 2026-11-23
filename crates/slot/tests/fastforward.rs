@@ -22,7 +22,7 @@ fn the_badge_follows_the_latch_rather_than_the_button() {
             ..Default::default()
         },
     )
-    .expect("write slot.state");
+    .expect("write advance.state");
     let mut s = Session::boot(d.path().to_path_buf());
     let mut now: Millis = 0;
 
@@ -63,7 +63,7 @@ fn fast_forward_toggle_on_r2_stays_on_after_the_release_until_the_next_press() {
             ..Default::default()
         },
     )
-    .expect("write slot.state");
+    .expect("write advance.state");
     let mut keys = ShortcutKeys::default();
     keys.set(Shortcut::FastForwardToggle, Binding::plain(Device::R2));
     write_shortcuts(d.path(), &keys).expect("write shortcuts");
@@ -103,7 +103,7 @@ fn the_fast_forward_settings_reach_the_emulator() {
             ..Default::default()
         },
     )
-    .expect("write slot.state");
+    .expect("write advance.state");
     let mut s = Session::boot(d.path().to_path_buf());
     let mut now: Millis = 0;
 
@@ -135,7 +135,7 @@ fn with_fast_forward_off_holding_it_is_refused_and_the_game_keeps_its_pace() {
             ..Default::default()
         },
     )
-    .expect("write slot.state");
+    .expect("write advance.state");
     let mut s = Session::boot(d.path().to_path_buf());
     let mut now: Millis = 0;
 

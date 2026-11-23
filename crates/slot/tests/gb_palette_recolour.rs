@@ -92,7 +92,7 @@ fn the_chord_recolours_the_running_game() {
             ..SlotState::default()
         },
     )
-    .expect("write slot.state");
+    .expect("write advance.state");
     let (mut s, _motor) = session_with_platform(d.path());
     let mut now = 0;
     play(&mut s, &mut now);
@@ -138,7 +138,7 @@ fn a_palette_picked_behind_the_menu_outlasts_the_menu() {
             ..SlotState::default()
         },
     )
-    .expect("write slot.state");
+    .expect("write advance.state");
     let (mut s, _motor) = session_with_platform(d.path());
     let mut now = 0;
     play(&mut s, &mut now);

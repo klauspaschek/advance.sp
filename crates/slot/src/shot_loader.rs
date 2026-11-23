@@ -52,10 +52,10 @@ impl ShotLoader {
         let decoded = Arc::new(AtomicUsize::new(0));
         let count = decoded.clone();
         if let Err(e) = thread::Builder::new()
-            .name("slot-shot-load".into())
+            .name("advance-shot-load".into())
             .spawn(move || work(&worker, &tx, &count))
         {
-            eprintln!("slot: gallery: no loader thread: {e}");
+            eprintln!("advance: gallery: no loader thread: {e}");
         }
         ShotLoader {
             shared,
@@ -146,7 +146,7 @@ fn work(shared: &Shared, done: &Sender<Loaded>, decoded: &AtomicUsize) {
         decoded.fetch_add(1, Ordering::Relaxed);
         lock.lock().unwrap_or_else(|e| e.into_inner()).working = None;
         let Some((rgba, w, h)) = decoded_png else {
-            eprintln!("slot: shot decode: {}", job.path.display());
+            eprintln!("advance: shot decode: {}", job.path.display());
             continue;
         };
         let (rgba, w, h) = match job.want {

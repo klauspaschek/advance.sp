@@ -112,7 +112,7 @@ impl Http {
                 .timeout_global(Some(Duration::from_secs(15)))
                 .max_redirects(0)
                 .user_agent(concat!(
-                    "slot/",
+                    "advance.sp/",
                     env!("CARGO_PKG_VERSION"),
                     " rcheevos/12.2.1"
                 ))

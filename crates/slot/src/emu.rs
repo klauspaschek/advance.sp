@@ -199,7 +199,7 @@ impl EmuHandle {
         };
         let worker_link = link.clone();
         let join = std::thread::Builder::new()
-            .name("slot-emu".into())
+            .name("advance-emu".into())
             .spawn(move || worker.run(core, rom, ring, sav, resume, worker_link))
             .ok();
         if join.is_none() {
@@ -472,7 +472,7 @@ fn answer<T>(rx: Receiver<T>, what: &str) -> Option<T> {
         Ok(v) => Some(v),
         Err(RecvTimeoutError::Timeout) => {
             eprintln!(
-                "slot: emu: no {what} after {} s, the core is not answering",
+                "advance: emu: no {what} after {} s, the core is not answering",
                 ANSWER_WAIT.as_secs()
             );
             None
@@ -499,7 +499,7 @@ enum Wait {
 
 impl Drop for EmuHandle {
     fn drop(&mut self) {
-        eprintln!("slot: emu: stopping at {:.1} ms", crate::boot_time::ms());
+        eprintln!("advance: emu: stopping at {:.1} ms", crate::boot_time::ms());
         self.shared.stop.store(true, Ordering::Relaxed);
         self.wake();
         if let Some(join) = self.join.take() {
@@ -509,7 +509,7 @@ impl Drop for EmuHandle {
             }
             if !join.is_finished() {
                 eprintln!(
-                    "slot: emu: the core has not stopped after {} s",
+                    "advance: emu: the core has not stopped after {} s",
                     STOP_WAIT.as_secs()
                 );
                 #[cfg(feature = "device")]
@@ -519,7 +519,7 @@ impl Drop for EmuHandle {
             }
             let _ = join.join();
         }
-        eprintln!("slot: emu: stopped at {:.1} ms", crate::boot_time::ms());
+        eprintln!("advance: emu: stopped at {:.1} ms", crate::boot_time::ms());
     }
 }
 
@@ -554,12 +554,12 @@ impl Worker {
         link: Link,
     ) {
         eprintln!(
-            "slot: emu: loading {} at {:.1} ms",
+            "advance: emu: loading {} at {:.1} ms",
             rom.display(),
             crate::boot_time::ms()
         );
         if let Err(e) = core.load(&rom) {
-            eprintln!("slot: {e}");
+            eprintln!("advance: {e}");
             self.shared
                 .state
                 .store(CoreState::Failed as u8, Ordering::Release);
@@ -567,23 +567,23 @@ impl Worker {
         }
         if let Some(sav) = sav {
             eprintln!(
-                "slot: emu: save ram, {} bytes, at {:.1} ms",
+                "advance: emu: save ram, {} bytes, at {:.1} ms",
                 sav.len(),
                 crate::boot_time::ms()
             );
             if let Err(e) = core.load_save_ram(&sav) {
-                eprintln!("slot: save ram: {e}");
+                eprintln!("advance: save ram: {e}");
                 self.shared.sav_refused.store(true, Ordering::Release);
             }
         }
         if let Some(resume) = resume {
             eprintln!(
-                "slot: emu: resume state, {} bytes, at {:.1} ms",
+                "advance: emu: resume state, {} bytes, at {:.1} ms",
                 resume.len(),
                 crate::boot_time::ms()
             );
             if let Err(e) = core.unserialize(&self.for_core(resume)) {
-                eprintln!("slot: resume: {e}");
+                eprintln!("advance: resume: {e}");
                 self.shared.resume_refused.store(true, Ordering::Release);
             }
         }
@@ -599,7 +599,7 @@ impl Worker {
         let mut resampler = Resampler::new(av.sample_rate, device_hz);
         if crate::session::trace() {
             eprintln!(
-                "slot: emu: nominal {:.6} fps, {:.0} Hz sound",
+                "advance: emu: nominal {:.6} fps, {:.0} Hz sound",
                 1.0 / native.as_secs_f64(),
                 av.sample_rate
             );
@@ -608,7 +608,7 @@ impl Worker {
         self.shared
             .state
             .store(CoreState::Ready as u8, Ordering::Release);
-        eprintln!("slot: emu: ready at {:.1} ms", crate::boot_time::ms());
+        eprintln!("advance: emu: ready at {:.1} ms", crate::boot_time::ms());
 
         let mut out = Vec::new();
         let mut gated = (false, false);
@@ -651,13 +651,13 @@ impl Worker {
                         if let Some(state) = c.take_state() {
                             let own = core.serialize().unwrap_or_default();
                             if !link_state::same_bios(&state, &own) {
-                                eprintln!("slot: cable: the host runs another GBA BIOS");
+                                eprintln!("advance: cable: the host runs another GBA BIOS");
                                 self.shared.bios_mismatch.store(true, Ordering::Relaxed);
                             } else {
                                 match core.unserialize(&state) {
                                     Ok(()) => {
                                         eprintln!(
-                                        "slot: cable: restored {} bytes, running the host's game",
+                                        "advance: cable: restored {} bytes, running the host's game",
                                         state.len()
                                     );
                                         self.shared.sav_refused.store(true, Ordering::Release);
@@ -665,7 +665,7 @@ impl Worker {
                                         c.prime();
                                         t.send(NETPACKET_RELIABLE, &cable::ready_packet());
                                     }
-                                    Err(e) => eprintln!("slot: cable: the state was refused: {e}"),
+                                    Err(e) => eprintln!("advance: cable: the state was refused: {e}"),
                                 }
                             }
                         }
@@ -736,7 +736,7 @@ impl Worker {
             if rewinding {
                 if let Some(state) = rewind.pop() {
                     if let Err(e) = core.unserialize(&state) {
-                        eprintln!("slot: rewind: {e}");
+                        eprintln!("advance: rewind: {e}");
                     }
                     core.set_frame_skip(false);
                     core.run_frame(ButtonMask(0));
@@ -823,7 +823,7 @@ impl Worker {
                 presents += 1;
                 if crate::session::trace() && presents.is_multiple_of(TRACE_EVERY) {
                     let elapsed = trace_began.elapsed().as_secs_f64();
-                    eprintln!("slot: emu: {committed} committed, {presents} presents, {:.3} game fps, {:.2} ms core/present, speed {speed:?}", committed as f64 / elapsed, core_cost.as_secs_f64() * 1000.0 / presents as f64);
+                    eprintln!("advance: emu: {committed} committed, {presents} presents, {:.3} game fps, {:.2} ms core/present, speed {speed:?}", committed as f64 / elapsed, core_cost.as_secs_f64() * 1000.0 / presents as f64);
                 }
                 cost.measured(skipped, drawn);
                 if cable.is_some() {
@@ -832,7 +832,7 @@ impl Worker {
                     if cable_said.elapsed() >= Duration::from_secs(5) {
                         let secs = cable_said.elapsed().as_secs_f32();
                         eprintln!(
-                            "slot: cable: {} presents, {} stalled, {:.1} fps, {:.1} ms core ({:.1} ms waiting) of {:.1} ms present",
+                            "advance: cable: {} presents, {} stalled, {:.1} fps, {:.1} ms core ({:.1} ms waiting) of {:.1} ms present",
                             cable_presents,
                             cable_stalls,
                             (cable_presents - cable_stalls) as f32 / secs,
@@ -855,7 +855,7 @@ impl Worker {
                     if ff.0 == 300 {
                         let secs = ff.3.elapsed().as_secs_f32();
                         eprintln!(
-                            "slot: ff: {:.1} frames a present, {:.0} fps, {:.1} ms core of {:.1} ms present, {:.1} ms after",
+                            "advance: ff: {:.1} frames a present, {:.0} fps, {:.1} ms core of {:.1} ms present, {:.1} ms after",
                             ff.1 as f32 / 300.0,
                             ff.1 as f32 / secs,
                             ff.2.as_secs_f32() * 1000.0 / 300.0,
@@ -915,7 +915,7 @@ impl Worker {
                     if crate::session::trace() && paced.is_multiple_of(TRACE_EVERY) {
                         let (dropped, starved) = (ring.overruns(), ring.underruns());
                         eprintln!(
-                            "slot: audio: {queued}/{target} queued, {dropped} dropped, {starved} starved, locked {lock} at {duration_ratio:.5}"
+                            "advance: audio: {queued}/{target} queued, {dropped} dropped, {starved} starved, locked {lock} at {duration_ratio:.5}"
                         );
                     }
                 }
@@ -1011,7 +1011,7 @@ impl Worker {
         ring.set_idle(false);
         let (dropped, starved) = (ring.overruns(), ring.underruns());
         if dropped > 0 || starved > 0 || crate::session::trace() {
-            eprintln!("slot: audio: {dropped} samples dropped, {starved} starved");
+            eprintln!("advance: audio: {dropped} samples dropped, {starved} starved");
         }
     }
 
@@ -1028,11 +1028,11 @@ impl Worker {
                 Ok(state) => {
                     let _ = reply.send(self.for_card(state));
                 }
-                Err(e) => eprintln!("slot: {e}"),
+                Err(e) => eprintln!("advance: {e}"),
             },
             Cmd::Load(state) => {
                 if let Err(e) = core.unserialize(&self.for_core(state)) {
-                    eprintln!("slot: {e}");
+                    eprintln!("advance: {e}");
                 }
             }
             Cmd::Refresh | Cmd::RefreshBlending => match core.serialize() {
@@ -1045,10 +1045,10 @@ impl Worker {
                     self.publish(core.video_xrgb8888());
                     let _ = core.take_audio();
                     if let Err(e) = core.unserialize(&state) {
-                        eprintln!("slot: refresh: {e}");
+                        eprintln!("advance: refresh: {e}");
                     }
                 }
-                Err(e) => eprintln!("slot: refresh: {e}"),
+                Err(e) => eprintln!("advance: refresh: {e}"),
             },
             Cmd::Sav(reply) => {
                 let _ = reply.send(core.save_ram());
@@ -1074,12 +1074,12 @@ impl Worker {
                 if player == 0 {
                     match core.serialize() {
                         Ok(state) => {
-                            eprintln!("slot: cable: sending {} bytes of state", state.len());
+                            eprintln!("advance: cable: sending {} bytes of state", state.len());
                             for p in cable::state_packets(&state) {
                                 wire.send(NETPACKET_RELIABLE, &p);
                             }
                         }
-                        Err(e) => eprintln!("slot: cable: the core would not serialize: {e}"),
+                        Err(e) => eprintln!("advance: cable: the core would not serialize: {e}"),
                     }
                     c.prime();
                 }

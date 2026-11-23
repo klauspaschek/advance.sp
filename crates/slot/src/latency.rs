@@ -51,7 +51,7 @@ fn response() -> Option<&'static Mutex<ResponseTrace>> {
                 })),
                 Err(error) => {
                     eprintln!(
-                        "slot: response trace: cannot open {}: {error}",
+                        "advance: response trace: cannot open {}: {error}",
                         std::path::Path::new(&path).display()
                     );
                     None
@@ -87,7 +87,7 @@ fn response_swapped() {
     if unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut time) } != 0 {
         trace.failed = true;
         eprintln!(
-            "slot: response trace: monotonic clock: {}",
+            "advance: response trace: monotonic clock: {}",
             io::Error::last_os_error()
         );
         return;
@@ -95,7 +95,7 @@ fn response_swapped() {
     let monotonic_ns = time.tv_sec as u64 * 1_000_000_000 + time.tv_nsec as u64;
     if let Err(error) = trace.swapped(monotonic_ns) {
         trace.failed = true;
-        eprintln!("slot: response trace: write failed: {error}");
+        eprintln!("advance: response trace: write failed: {error}");
     }
 }
 
@@ -164,7 +164,7 @@ pub fn swapped(swap_ms: f64) {
     BITS.store(0, Ordering::Release);
     let ms = |from: u64, to: u64| to.saturating_sub(from) as f64 / 1e6;
     eprintln!(
-        "slot: latency: read>pad {:.1} pad>emu {:.1} emu>pub {:.1} pub>take {:.1} take>swapped {:.1} (swap {:.1}) total {:.1} ms",
+        "advance: latency: read>pad {:.1} pad>emu {:.1} emu>pub {:.1} pub>take {:.1} take>swapped {:.1} (swap {:.1}) total {:.1} ms",
         ms(r, a),
         ms(a, e),
         ms(e, p),

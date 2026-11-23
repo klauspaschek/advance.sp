@@ -23,7 +23,7 @@ impl Browser {
         let mut view=Self::empty("Reading achievements…");
         let Some(rom)=rom else {view.message="Start a game to browse its achievements";return view;};
         let (send,receive)=mpsc::channel();
-        match std::thread::Builder::new().name("slot-ra-list".into()).spawn(move||{
+        match std::thread::Builder::new().name("advance-ra-list".into()).spawn(move||{
             let _=send.send(slot_achievements::cached_achievements(&root,&username,&rom));
         }) {Ok(_)=>view.reply=Some(receive),Err(_)=>view.message="Cannot open achievements"};
         view
@@ -67,7 +67,7 @@ impl Browser {
                 if self.requested.len()>24 {self.badges.clear();self.requested.clear();}
                 self.requested.extend(wanted.iter().map(|(id,_)|*id));
                 let (send,receive)=mpsc::channel();
-                if std::thread::Builder::new().name("slot-ra-list-art".into()).spawn(move||{
+                if std::thread::Builder::new().name("advance-ra-list-art".into()).spawn(move||{
                     let _=send.send(wanted.into_iter().map(|(id,path)|(id,slot_achievements::load_badge(&path))).collect());
                 }).is_ok(){self.images=Some(receive);}
             }

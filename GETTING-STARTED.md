@@ -10,13 +10,13 @@ Use the System ZIP to update an existing installation, or the SD2 ZIP for a new 
 
 | Download | Use it for |
 | :--- | :--- |
-| **[slot.sp-System.zip](https://github.com/klauspaschek/advance.sp/releases/latest/download/slot.sp-System.zip)** | Updating a card that already runs slot, slot.sp or advance.sp. Contains the `System` folder. |
-| **[slot.sp-SD2.zip](https://github.com/klauspaschek/advance.sp/releases/latest/download/slot.sp-SD2.zip)** | A new content card, with the folder structure and starting settings. |
+| **[advance.sp-System.zip](https://github.com/klauspaschek/advance.sp/releases/latest/download/advance.sp-System.zip)** | Updating a card that already runs slot, slot.sp or advance.sp. Contains the `System` folder. |
+| **[advance.sp-SD2.zip](https://github.com/klauspaschek/advance.sp/releases/latest/download/advance.sp-SD2.zip)** | A new content card, with the folder structure and starting settings. |
 
 ## Update an existing installation
 
 1. Back up your content card and shut down the handheld.
-2. Download and extract **slot.sp-System.zip**.
+2. Download and extract **advance.sp-System.zip**.
 3. Copy its `System` folder to the root of your content card, replacing the existing folder's files.
 4. Safely eject the card, put it back in the handheld and power on.
 
@@ -27,13 +27,13 @@ Your `Games`, `Saves`, `States`, `Labels` and `Config` folders stay in place. Wi
 
 ## First installation
 
-advance.sp runs on **BaseOS**. Use the [BaseOS installation instructions](https://slot-cfw.fyi/installing/) to prepare the operating-system card, and use this fork's **slot.sp-SD2.zip** for the game-launcher files.
+advance.sp runs on **BaseOS**. Use the [BaseOS installation instructions](https://slot-cfw.fyi/installing/) to prepare the operating-system card, and use this fork's **advance.sp-SD2.zip** for the game-launcher files.
 
 For a two-card setup:
 
 1. Install BaseOS on **SD1** using the installation guide.
 2. Format **SD2** as FAT32 or exFAT, with an MBR partition table.
-3. Extract **slot.sp-SD2.zip** directly onto SD2.
+3. Extract **advance.sp-SD2.zip** directly onto SD2.
 4. Add your games, insert both cards and power on.
 5. Set the date, time and UTC offset when asked.
 
@@ -96,13 +96,13 @@ Next: [Buttons & shortcuts](CONTROLS.md) · [Games & artwork](LIBRARY.md)
 
 ## Updates from the handheld
 
-Open **General → Updates** while Wi-Fi is connected. Launcher updates target this fork's `klauspaschek/advance.sp` releases and stage its verified `slot.sp-System.zip` (the file keeps slot.sp's name so the updater stays compatible); choose **Restart to install** when ready. The updater keeps Config, Games, Saves and custom System additions. BaseOS updates are separate, offered only for the detected compatible target and adequate battery or charging. Installation is explicit.
+Open **General → Updates** while Wi-Fi is connected. Launcher updates target this fork's `klauspaschek/advance.sp` releases and stage its verified `advance.sp-System.zip`; choose **Restart to install** when ready. The updater keeps Config, Games, Saves and custom System additions. BaseOS updates are separate, offered only for the detected compatible target and adequate battery or charging. Installation is explicit.
 
 **General → Automatic time** enables background UTC correction over a connected network. **Time zone** chooses the local UTC offset and applies immediately. The offset is manual, including daylight-saving changes. Selecting Updates or Automatic time while disconnected opens Network with a Wi-Fi-needed pill.
 
 ## File sharing
 
-Open Settings → Network → File sharing and turn Sharing on. On a Mac, use Finder → Go → Connect to Server and enter the displayed `smb://<device IP>/SDCard` address. Choose Registered User, username `slot`, and the password shown by the device. Use **Set password** to choose your own. Both computers must be able to reach each other on the same network.
+Open Settings → Network → File sharing and turn Sharing on. On a Mac, use Finder → Go → Connect to Server and enter the displayed `smb://<device IP>/SDCard` address. Choose Registered User, username `advance`, and the password shown by the device. Use **Set password** to choose your own. Both computers must be able to reach each other on the same network.
 
 The share provides read/write access to the whole content card: Games, Saves, Labels, Wallpapers, Config, System and any other folders. Copy files directly to their intended folders; no import step is needed. Eject the share in Finder before turning Sharing off. The launcher rescans games and artwork when sharing stops; restart after changing launcher configuration or System files. Password-authenticated SMB3 encryption remains required. Turn sharing off before launching games, opening Cart Studio or installing updates, so the computer cannot modify those files while they are in use. Link play also stops sharing.
 

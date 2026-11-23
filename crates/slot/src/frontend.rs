@@ -603,7 +603,7 @@ impl Frontend {
         if let Some(rgba) = bezel_face(&path, panel.0, panel.1) {
             let tex = compositor.create_texture(panel.0, panel.1, &rgba);
             self.session.app_mut().set_sp_strip(Some(tex));
-            eprintln!("slot: bezel {}", path.display());
+            eprintln!("advance: bezel {}", path.display());
         }
     }
 
@@ -1043,7 +1043,7 @@ impl Frontend {
         let (tx, rx) = std::sync::mpsc::channel();
         let root = root.to_path_buf();
         std::thread::Builder::new()
-            .name("slot-label-check".into())
+            .name("advance-label-check".into())
             .spawn(move || {
                 let _ = tx.send(label_cache::stale(&root, carts.iter()));
             })
@@ -1065,7 +1065,7 @@ impl Frontend {
             return;
         };
         if !stale.is_empty() {
-            eprintln!("slot: label cache: {} new labels", stale.len());
+            eprintln!("advance: label cache: {} new labels", stale.len());
             self.rebuild = Some(Rebuild::start(&root, stale));
         }
     }
@@ -1080,7 +1080,7 @@ impl Frontend {
         };
         if rebuild.stalled() && !rebuild.finished() {
             eprintln!(
-                "slot: label cache: no label finished for a while, going on at {} / {}",
+                "advance: label cache: no label finished for a while, going on at {} / {}",
                 rebuild.done(),
                 rebuild.total()
             );
@@ -1547,7 +1547,7 @@ fn sync_gallery(app: &mut App, compositor: &mut Compositor, state: &mut Switcher
                 if state.thumbs.len() == state.window.len() {
                     if let Some(at) = state.first_window.take() {
                         eprintln!(
-                            "slot: gallery: first {} thumbs in {} ms",
+                            "advance: gallery: first {} thumbs in {} ms",
                             state.thumbs.len(),
                             at.elapsed().as_millis()
                         );
@@ -1570,7 +1570,7 @@ fn sync_gallery(app: &mut App, compositor: &mut Compositor, state: &mut Switcher
                 state.full_pending = None;
                 if let Some(at) = state.full_asked.take() {
                     eprintln!(
-                        "slot: gallery: full shot in {} ms",
+                        "advance: gallery: full shot in {} ms",
                         at.elapsed().as_millis()
                     );
                 }
@@ -1678,7 +1678,7 @@ fn sync_tv_bezel(app: &App, compositor: &mut Compositor, state: &mut BezelSync) 
                 .join(name);
             let rgba = slot_ui::bezel_face(&path, *w, *h);
             if rgba.is_none() {
-                eprintln!("slot: tv bezel: could not read {}", path.display());
+                eprintln!("advance: tv bezel: could not read {}", path.display());
             }
             rgba.map(|rgba| (*w, *h, rgba))
         });

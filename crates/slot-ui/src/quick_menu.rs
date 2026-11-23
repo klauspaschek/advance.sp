@@ -1151,9 +1151,17 @@ pub fn quick_pointer_face() -> UndoFace {
 }
 
 pub fn quick_value_face(text: &str, lit: bool) -> UndoFace {
-    let role = if text.chars().next().is_some_and(|c| c.is_ascii_digit()) || text.contains(':') { text::Role::Value }
-        else if lit { text::Role::Focus } else { text::Role::Menu };
-    quick_text_face(text, if lit { MENU_INK } else { DIM_INK }, role)
+    quick_text_face(text, if lit { MENU_INK } else { DIM_INK }, quick_value_role(text, lit))
+}
+fn quick_value_role(text: &str, lit: bool) -> text::Role {
+    if text.chars().next().is_some_and(|c| c.is_ascii_digit()) || text.contains(':') { text::Role::Value }
+        else if lit { text::Role::Focus } else { text::Role::Menu }
+}
+/// The smallest blank between a settings label and its value, in pixels.
+pub const VALUE_GAP: f32 = 16.0;
+/// A value no wider than `max_width` of ink: as `quick_value_face`, set smaller only if it must be.
+fn quick_value_face_within(text: &str, lit: bool, max_width: f32) -> UndoFace {
+    quick_text_face_within(text, if lit { MENU_INK } else { DIM_INK }, quick_value_role(text, lit), max_width.max(40.0))
 }
 
 fn binding_button(key:&str)->Option<ButtonLegend> {
@@ -1568,7 +1576,11 @@ fn parent_settings_face_render(canvas: Canvas, rows: &[(String,String,bool)], se
                 let available=(right-QUICK_LABEL_X-label_face.w as f32+2.0*pad
                     -2.0*quick_caret_face(true).w as f32-2.0*CARET_GAP-16.0).max(80.0);
                 quick_text_face_within(value,MENU_INK,text::Role::Focus,available)
-            } else { quick_value_face(value, lit) };
+            } else if lit && *adjustable { quick_value_face(value, lit) }
+            else {
+                // The lit label is set larger; a long value shrinks to keep a gap after it.
+                quick_value_face_within(value, lit, right - QUICK_LABEL_X - label_face.w as f32 + 2.0 * pad - VALUE_GAP)
+            };
         if toggle {
             parent_blit(&mut face, &value, right + pad - value.w as f32, y);
             continue;
@@ -2150,7 +2162,9 @@ fn push(out: &mut Vec<Draw>, tex: TexId, x: f32, y: f32, w: u32, h: u32) {
 /// Sentence case for authored interface copy, retaining acronyms and brand names.
 pub fn menu_sentence_case(label: &str) -> String {
     label.split(' ').enumerate().map(|(i, word)| {
+        // Names keep their case: all capitals, a capital inside the word (BaseOS, gpSP), or listed.
         if i == 0 || word.chars().filter(|c| c.is_alphabetic()).all(|c| c.is_uppercase()) ||
+            word.chars().skip(1).any(|c| c.is_uppercase()) ||
             ["Bluetooth", "Wi-Fi", "D-Pad", "mGBA", "gpSP"].contains(&word) { word.to_string() }
         else { word.to_lowercase() }
     }).collect::<Vec<_>>().join(" ")

@@ -25,7 +25,7 @@ fn on_carousel_with(state: SlotState) -> (TempDir, App, Clock) {
             ..state
         },
     )
-    .expect("write slot.state");
+    .expect("write advance.state");
     let (a, clock) = app_booting_at(d.path(), CLOCK_IS_SET);
     assert!(
         matches!(a.phase(), Phase::Shelf),
@@ -452,7 +452,7 @@ fn colour_correction_leaves_the_settings_around_it_alone() {
 #[test]
 fn left_keeps_disclosed_rows_and_right_opens_without_writing_settings() {
     let (d, mut a, _) = on_carousel();
-    let before = std::fs::read(d.path().join("Config/slot.state")).expect("read slot.state");
+    let before = std::fs::read(d.path().join("Config/advance.state")).expect("read advance.state");
     for row in [QuickRow::DateTime, QuickRow::About] {
         open_at(&mut a, row);
         press(&mut a, Btn::Left);
@@ -464,7 +464,7 @@ fn left_keeps_disclosed_rows_and_right_opens_without_writing_settings() {
         assert_eq!(a.quick_menu(),Some(row));
         while a.quick_menu().is_some() {press(&mut a,Btn::B);}
     }
-    assert_eq!(std::fs::read(d.path().join("Config/slot.state")).unwrap(),before,
+    assert_eq!(std::fs::read(d.path().join("Config/advance.state")).unwrap(),before,
         "opening a disclosure wrote settings");
 }
 

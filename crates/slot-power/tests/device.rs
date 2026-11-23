@@ -383,7 +383,7 @@ fn headphones_follow_the_detection_pin() {
 const MOUNTS: &str = "\
 /dev/mmcblk0p5 / ext4 rw,noatime 0 0
 /dev/mmcblk0p7 /mnt/sdcard vfat ro,noatime,fmask=0022,errors=remount-ro 0 0
-tmpfs /mnt/sdcard/System/slot tmpfs rw,relatime 0 0
+tmpfs /mnt/sdcard/System/advance tmpfs rw,relatime 0 0
 /dev/mmcblk1p1 /mnt/other exfat rw,noatime,errors=remount-ro 0 0
 ";
 
@@ -397,7 +397,7 @@ fn the_closest_mount_decides_not_the_root() {
     assert!(!slot_power::read_only_in(MOUNTS, Path::new("/mnt/other")));
     assert!(!slot_power::read_only_in(
         MOUNTS,
-        Path::new("/mnt/sdcard/System/slot")
+        Path::new("/mnt/sdcard/System/advance")
     ));
 }
 
@@ -471,7 +471,7 @@ fn the_card_is_found_with_its_device_and_filesystem() {
 
 #[test]
 fn a_card_on_no_block_device_is_not_one_to_repair() {
-    assert!(slot_power::card_mount_in(MOUNTS, Path::new("/mnt/sdcard/System/slot")).is_none());
+    assert!(slot_power::card_mount_in(MOUNTS, Path::new("/mnt/sdcard/System/advance")).is_none());
 }
 
 #[test]
@@ -515,7 +515,7 @@ fn a_card_without_the_script_cannot_stage_a_repair() {
 fn the_repair_result_is_read_once() {
     use slot_power::RepairResult;
     let d = tempfile::tempdir().unwrap();
-    let file = d.path().join("slot-repair.result");
+    let file = d.path().join("advance-repair.result");
     assert_eq!(slot_power::take_repair_result(&file), None);
     for (text, want) in [
         ("repaired\n", RepairResult::Repaired),

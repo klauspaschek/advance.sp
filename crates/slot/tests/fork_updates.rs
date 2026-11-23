@@ -2,18 +2,18 @@ use slot::update::*;
 use serde_json::{json,Value};
 use std::io::{Cursor,Write};
 const SHA:&str="1111111111111111111111111111111111111111";
-fn release()->Value {json!({"draft":false,"prerelease":false,"tag_name":"build-2026.11.03-1111111","target_commitish":SHA,"assets":[{"name":"slot.sp-System.zip","state":"uploaded","size":123,"digest":format!("sha256:{}","ab".repeat(32)),"browser_download_url":"https://github.com/klauspaschek/advance.sp/releases/download/build-2026.11.03-1111111/slot.sp-System.zip"}]})}
+fn release()->Value {json!({"draft":false,"prerelease":false,"tag_name":"build-2026.11.03-1111111","target_commitish":SHA,"assets":[{"name":"advance.sp-System.zip","state":"uploaded","size":123,"digest":format!("sha256:{}","ab".repeat(32)),"browser_download_url":"https://github.com/klauspaschek/advance.sp/releases/download/build-2026.11.03-1111111/advance.sp-System.zip"}]})}
 fn package(source:&str,extra:Option<&str>)->Vec<u8> {
     package_with_entry(source,extra.map(|path|(path,b"bad".as_slice())))
 }
 fn package_with_entry(source:&str,extra:Option<(&str,&[u8])>)->Vec<u8> {
     let mut zip=zip::ZipWriter::new(Cursor::new(Vec::new()));
     let options=zip::write::FileOptions::default().unix_permissions(0o755);
-    for name in ["slot","launch_frontend.sh","mgba_libretro.so","gpsp_libretro.so"] {
+    for name in ["advance","launch_frontend.sh","mgba_libretro.so","gpsp_libretro.so"] {
         zip.start_file(format!("System/{name}"),options).unwrap();zip.write_all(b"fixture").unwrap();
     }
     zip.start_file("System/build-info.json",options).unwrap();
-    zip.write_all(json!({"product":"slot.sp","repository":"klauspaschek/advance.sp","architecture":"aarch64","source_commit":source}).to_string().as_bytes()).unwrap();
+    zip.write_all(json!({"product":"advance.sp","repository":"klauspaschek/advance.sp","architecture":"aarch64","source_commit":source}).to_string().as_bytes()).unwrap();
     if let Some((path,bytes))=extra {zip.start_file(path,options).unwrap();zip.write_all(bytes).unwrap();}
     zip.finish().unwrap().into_inner()
 }
@@ -37,7 +37,7 @@ fn entry_metadata(bytes:&mut [u8],name:&str,mode:u32,size:Option<u32>) {
 #[test]
 fn only_a_published_fork_asset_with_a_digest_is_accepted() {
     let v=release();let r=parse_release(&v.to_string()).unwrap();assert_eq!(r.source,SHA);
-    for bad in ["https://github.com/BrandonKowalski/slot/releases/download/x/slot.sp-System.zip","http://github.com/klauspaschek/advance.sp/releases/download/x/slot.sp-System.zip"] {
+    for bad in ["https://github.com/BrandonKowalski/slot/releases/download/x/advance.sp-System.zip","http://github.com/klauspaschek/advance.sp/releases/download/x/advance.sp-System.zip"] {
         let mut v=release();v["assets"][0]["browser_download_url"]=json!(bad);assert!(parse_release(&v.to_string()).is_err());
     }
     let mut v=release();v["draft"]=json!(true);assert!(parse_release(&v.to_string()).is_err());
@@ -45,11 +45,11 @@ fn only_a_published_fork_asset_with_a_digest_is_accepted() {
 }
 #[test]
 fn staging_checks_source_and_cannot_write_config_or_escape_system() {
-    let d=tempfile::tempdir().unwrap();std::fs::create_dir_all(d.path().join("System")).unwrap();std::fs::write(d.path().join("System/slot"),b"installed").unwrap();
+    let d=tempfile::tempdir().unwrap();std::fs::create_dir_all(d.path().join("System")).unwrap();std::fs::write(d.path().join("System/advance"),b"installed").unwrap();
     let r=parse_release(&release().to_string()).unwrap();
     for zip in [package("2222222222222222222222222222222222222222",None),package(SHA,Some("System/../../Config/settings")),package(SHA,Some("Config/settings")),package(SHA,Some("System/bad\nslot"))] {
         assert!(stage(d.path(),&zip,&r).is_err());assert!(!d.path().join(STAGING).exists());
-        assert_eq!(std::fs::read(d.path().join("System/slot")).unwrap(),b"installed");
+        assert_eq!(std::fs::read(d.path().join("System/advance")).unwrap(),b"installed");
     }
     stage(d.path(),&package(SHA,None),&r).unwrap();assert!(d.path().join(STAGING).join(MANIFEST).is_file());
     assert!(stage(d.path(),&package(SHA,None),&r).is_err(),"a ready update is never overwritten");
@@ -80,11 +80,11 @@ fn staging_strips_privileged_mode_bits_but_preserves_executable_permissions() {
     let d=tempfile::tempdir().unwrap();
     let r=parse_release(&release().to_string()).unwrap();
     let mut bytes=package(SHA,None);
-    entry_metadata(&mut bytes,"System/slot",0o107755,None);
+    entry_metadata(&mut bytes,"System/advance",0o107755,None);
     let mut archive=zip::ZipArchive::new(Cursor::new(&bytes)).unwrap();
-    assert_eq!(archive.by_name("System/slot").unwrap().unix_mode().unwrap()&0o7777,0o7755);
+    assert_eq!(archive.by_name("System/advance").unwrap().unix_mode().unwrap()&0o7777,0o7755);
     stage(d.path(),&bytes,&r).unwrap();
-    let installed=d.path().join(STAGING).join("slot");
+    let installed=d.path().join(STAGING).join("advance");
     assert_eq!(std::fs::metadata(installed).unwrap().permissions().mode()&0o7777,0o755);
 }
 #[test]
@@ -192,7 +192,7 @@ fn inconsistent_expanded_size_cannot_bypass_staging_budget() {
 #[test]
 fn failed_download_checks_never_touch_installed_or_user_files() {
     let d=tempfile::tempdir().unwrap();
-    for path in ["System/slot","Config/settings","Games/game.gba","Saves/game.sav"] {
+    for path in ["System/advance","Config/settings","Games/game.gba","Saves/game.sav"] {
         let p=d.path().join(path);std::fs::create_dir_all(p.parent().unwrap()).unwrap();std::fs::write(p,b"keep").unwrap();
     }
     let bytes=package(SHA,None);let mut r=parse_release(&release().to_string()).unwrap();r.size=bytes.len() as u64;
@@ -201,7 +201,7 @@ fn failed_download_checks_never_touch_installed_or_user_files() {
     r.sha256=ring::digest::digest(&ring::digest::SHA256,&bytes).as_ref().try_into().unwrap();
     assert_eq!(install_with(d.path(),&mut |_|Ok(bytes[..bytes.len()-1].to_vec()),&r),UpdateEvent::Failed(UpdateFail::Download));
     assert!(!d.path().join(STAGING).exists());
-    for path in ["System/slot","Config/settings","Games/game.gba","Saves/game.sav"] {assert_eq!(std::fs::read(d.path().join(path)).unwrap(),b"keep");}
+    for path in ["System/advance","Config/settings","Games/game.gba","Saves/game.sav"] {assert_eq!(std::fs::read(d.path().join(path)).unwrap(),b"keep");}
 }
 
 fn baseos_fixture()->Release {

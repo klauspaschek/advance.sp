@@ -56,7 +56,7 @@ repair() {
 }
 
 result() {
-	cat "$TMP/data/slot-repair.result" 2>/dev/null
+	cat "$TMP/data/advance-repair.result" 2>/dev/null
 }
 
 called() {
@@ -82,7 +82,7 @@ before "rmmod 8821cs" "reboot " || fail "rebooted with the WiFi driver loaded, w
 	|| fail "the screen did not walk through the job: $(grep '^splash' "$TMP/calls" | tr '\n' '|')"
 before "splash --important -1 UNMOUNTING DISK" "umount /mnt/sdcard" || fail "unmounted before saying so"
 before "fsck.fat -a /dev/mmcblk0p7" "splash --important -1 REPAIR COMPLETE" || fail "said complete before fsck ran"
-grep -q "fsck.fat -a /dev/mmcblk0p7 pass 1 exit 1" "$TMP/data/slot-repair.log" || fail "the log did not keep fsck's exit"
+grep -q "fsck.fat -a /dev/mmcblk0p7 pass 1 exit 1" "$TMP/data/advance-repair.log" || fail "the log did not keep fsck's exit"
 [ "$(grep -c '^sleep 2.00$' "$TMP/calls")" = 3 ] && called "sleep 2" \
 	|| fail "a step was not held for two seconds: $(grep '^sleep' "$TMP/calls" | tr '\n' '|')"
 
@@ -141,7 +141,7 @@ repair
 called "reboot " || fail "a busy card did not reboot"
 
 setup
-echo 4242 > "$TMP/run/slot-led.pid"
+echo 4242 > "$TMP/run/advance-led.pid"
 codes 0 0
 repair
 [ "$(result)" = clean ] || fail "a stale LED pid broke the repair"
@@ -167,8 +167,8 @@ setup
 fake fsck.fat 'exec /bin/sleep 30'
 (FSCK_WAIT=20 repair)
 [ "$(result)" = failed ] || fail "an fsck that never finished did not read as failed: $(result)"
-[ "$(grep -c 'fsck.fat -a /dev/mmcblk0p7 pass' "$TMP/data/slot-repair.log")" = 1 ] || fail "ran another pass after one hung"
-grep -q "still running after 20s" "$TMP/data/slot-repair.log" || fail "the log did not say fsck hung"
+[ "$(grep -c 'fsck.fat -a /dev/mmcblk0p7 pass' "$TMP/data/advance-repair.log")" = 1 ] || fail "ran another pass after one hung"
+grep -q "still running after 20s" "$TMP/data/advance-repair.log" || fail "the log did not say fsck hung"
 called "splash --important -1 REPAIR FAILED: USE A COMPUTER" || fail "a hung repair did not say so"
 called "reboot -f -n" || fail "a hung repair did not reboot without waiting on the card"
 

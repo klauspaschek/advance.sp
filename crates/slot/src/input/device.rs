@@ -98,7 +98,7 @@ impl DeviceInput {
                 nodes.open_new(true);
             });
         if let Err(e) = spawned {
-            eprintln!("slot: input watch: {e}");
+            eprintln!("advance: input watch: {e}");
         }
         input
     }
@@ -135,7 +135,7 @@ impl Nodes {
             let name = device_name(&self.sys, &node);
             let pad = layout == Layout::Pad && is_gamepad(&self.sys, &node);
             eprintln!(
-                "slot: input {} ({name}){}",
+                "advance: input {} ({name}){}",
                 node.display(),
                 if pad { " as a gamepad" } else { "" }
             );
@@ -164,7 +164,7 @@ impl Nodes {
                 .spawn(move || {
                     reader.read(&node);
                     if pad {
-                        eprintln!("slot: input {} ({name}) disconnected", node.display());
+                        eprintln!("advance: input {} ({name}) disconnected", node.display());
                         let mut pads = lock(&pads);
                         if let Some(i) = pads.iter().position(|p| *p == name) {
                             pads.remove(i);
@@ -174,7 +174,7 @@ impl Nodes {
                     lock(&opened).remove(&node);
                 });
             if let Err(e) = spawned {
-                eprintln!("slot: input {label}: {e}");
+                eprintln!("advance: input {label}: {e}");
             }
         }
     }
@@ -200,10 +200,10 @@ fn quicken_poll(sys: &Path, node: &Path) {
     if now > POLL_MS {
         match std::fs::write(&attr, POLL_MS.to_string()) {
             Ok(()) => eprintln!(
-                "slot: input {}: poll {now} ms -> {POLL_MS} ms",
+                "advance: input {}: poll {now} ms -> {POLL_MS} ms",
                 node.display()
             ),
-            Err(e) => eprintln!("slot: input {}: poll: {e}", node.display()),
+            Err(e) => eprintln!("advance: input {}: poll: {e}", node.display()),
         }
     }
 }
@@ -266,7 +266,7 @@ impl Reader {
         let mut file = match File::open(node) {
             Ok(f) => f,
             Err(e) => {
-                eprintln!("slot: input {}: {e}", node.display());
+                eprintln!("advance: input {}: {e}", node.display());
                 return;
             }
         };
@@ -284,7 +284,7 @@ impl Reader {
                 Ok(n) => n,
                 Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
                 Err(e) => {
-                    eprintln!("slot: input {}: {e}", node.display());
+                    eprintln!("advance: input {}: {e}", node.display());
                     return;
                 }
             };
@@ -368,7 +368,7 @@ impl Trace {
         let mut file = match File::create(&path) {
             Ok(f) => f,
             Err(e) => {
-                eprintln!("slot: {}: {e}", path.display());
+                eprintln!("advance: {}: {e}", path.display());
                 return None;
             }
         };

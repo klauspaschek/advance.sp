@@ -6,7 +6,7 @@ import subprocess
 import tempfile
 import unittest
 
-SCRIPT = Path(__file__).resolve().parent / 'System/slotwifi.sh'
+SCRIPT = Path(__file__).resolve().parent / 'System/wifi.sh'
 
 class Diagnostics(unittest.TestCase):
     def test_allowlisted_facts_without_running_network_commands_or_reading_secrets(self):
@@ -14,10 +14,10 @@ class Diagnostics(unittest.TestCase):
             root = Path(tmp)
             net, run, binaries = (root / x for x in ('net', 'run', 'bin'))
             for path in (net / 'wlan0', run, binaries): path.mkdir(parents=True)
-            (run / 'slotwifi.owner').write_text('owner')
-            (run / 'slotwifi-watch.pid').write_text(str(os.getpid()))
-            (run / 'slotwifi-udhcpc.pid').write_text('INVALID_SECRET_PID')
-            (run / 'slotwifi.conf').write_text('psk=SECRET_PASSWORD\nssid=SECRET_SSID\n')
+            (run / 'advance-wifi.owner').write_text('owner')
+            (run / 'advance-wifi-watch.pid').write_text(str(os.getpid()))
+            (run / 'advance-wifi-udhcpc.pid').write_text('INVALID_SECRET_PID')
+            (run / 'advance-wifi.conf').write_text('psk=SECRET_PASSWORD\nssid=SECRET_SSID\n')
             resolver = root / 'resolv.conf'
             resolver.write_text('search PRIVATE_DOMAIN\nnameserver 192.0.2.53\n')
             trap = root / 'commands-ran'
@@ -39,8 +39,8 @@ class Diagnostics(unittest.TestCase):
             for secret in ('SECRET', 'PRIVATE', '192.0.2.', str(root)):
                 self.assertNotIn(secret, result.stdout)
             for value in facts.values(): self.assertIn(value, ('yes', 'no', 'alive', 'stale', 'missing'))
-            self.assertEqual((run / 'slotwifi.conf').read_text(), 'psk=SECRET_PASSWORD\nssid=SECRET_SSID\n')
-            (run / 'slotwifi-watch.pid').unlink()
+            self.assertEqual((run / 'advance-wifi.conf').read_text(), 'psk=SECRET_PASSWORD\nssid=SECRET_SSID\n')
+            (run / 'advance-wifi-watch.pid').unlink()
             env['AGS_UDHCPC'] = str(root / 'missing-command')
             second = subprocess.check_output(['/bin/sh', str(SCRIPT), 'diagnostics'], env=env, text=True)
             self.assertIn('watcher=missing\n', second)

@@ -23,7 +23,7 @@ pub fn link_port() -> u16 {
     match raw.to_str().and_then(|s| s.trim().parse::<u16>().ok()) {
         None | Some(0) => {
             eprintln!(
-                "slot: {PORT_ENV}={:?} is not a port a link can meet on, using {DEFAULT_LINK_PORT}",
+                "advance: {PORT_ENV}={:?} is not a port a link can meet on, using {DEFAULT_LINK_PORT}",
                 raw.to_string_lossy()
             );
             DEFAULT_LINK_PORT
@@ -144,7 +144,7 @@ impl LinkStarter {
                     RadioFail::NoHost => LinkFail::NobodyCame,
                     RadioFail::Cancelled => LinkFail::Cancelled,
                     RadioFail::Radio(why) => {
-                        eprintln!("slot: link: {role:?} could not bring the radio up: {why}");
+                        eprintln!("advance: link: {role:?} could not bring the radio up: {why}");
                         LinkFail::Radio
                     }
                 };
@@ -153,18 +153,18 @@ impl LinkStarter {
                 return;
             }
             let _ = tx.send(LinkProgress::At(LinkStep::Waiting));
-            eprintln!("slot: link: {role:?} using {HOST_ADDR}:{port}");
+            eprintln!("advance: link: {role:?} using {HOST_ADDR}:{port}");
             match socket(port, &flag) {
                 Ok(link) => {
-                    eprintln!("slot: link: {role:?} connected on {HOST_ADDR}:{port}");
+                    eprintln!("advance: link: {role:?} connected on {HOST_ADDR}:{port}");
                     if tx.send(LinkProgress::Ready(link)).is_err() {
-                        eprintln!("slot: link: nobody left to hand it to, radio back down");
+                        eprintln!("advance: link: nobody left to hand it to, radio back down");
                         radio_down();
                     }
                 }
                 Err(e) => {
                     eprintln!(
-                        "slot: link: {role:?} failed on {HOST_ADDR}:{port}: {e} (kind {:?})",
+                        "advance: link: {role:?} failed on {HOST_ADDR}:{port}: {e} (kind {:?})",
                         e.kind()
                     );
                     radio_down();

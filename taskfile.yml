@@ -94,7 +94,7 @@ tasks:
     desc: Test the scripts slot ships on the card, off-device
     cmds:
       - python3 card/test-wifi-diagnostics.py
-      - sh card/test-slotlink.sh
+      - sh card/test-link.sh
       - sh card/test-led.sh
       - sh card/test-lid.sh
       - sh card/test-coresave.sh
@@ -221,7 +221,7 @@ tasks:
     cmds:
       - rm -rf {{.OUT}}
       - ./target/release/slot --init-root {{.OUT}}
-      - cp target/release/slot {{.OUT}}/System/slot
+      - cp target/release/slot {{.OUT}}/System/advance
       - cp {{.CORE}} {{.GPSP_HOST}} {{.OUT}}/System/
       - 'echo "dist ready at {{.OUT}}, copy its contents to SD2"'
 
@@ -368,7 +368,7 @@ tasks:
       - task: device:sh
         vars:
           CMD: ./target-device/device/slot --init-root {{.OUT}}
-      - cp target-device/device/slot {{.OUT}}/System/slot
+      - cp target-device/device/slot {{.OUT}}/System/advance
       - cp -R card/System/* {{.OUT}}/System/
       - cp -R vendor/samba {{.OUT}}/System/samba
       - for d in Bezels Labels Wallpapers; do cp card/$d/README.txt {{.OUT}}/$d/; done
@@ -426,7 +426,7 @@ tasks:
       - "{{.ADB}} wait-for-device"
       - file vendor/mgba_libretro.so | grep -q aarch64
       - file vendor/gpsp_libretro.so | grep -q aarch64
-      - "{{.ADB}} push target-device/device/slot '{{.SD}}/System/slot'"
+      - "{{.ADB}} push target-device/device/slot '{{.SD}}/System/advance'"
       - for f in card/System/*; do {{.ADB}} push "$f" '{{.SD}}/System/'; done
       - "{{.ADB}} push vendor/samba '{{.SD}}/System/'"
       - "{{.ADB}} push vendor/mgba_libretro.so '{{.SD}}/System/mgba_libretro.so'"
@@ -449,7 +449,7 @@ tasks:
         for p in cores/mgba/*.patch; do
           {{.ADB}} push "$p" "{{.SD}}/System/licenses/mgba-$(basename "$p")"
         done
-      - "{{.ADB}} shell 'chmod +x {{.SD}}/System/slot && sync'"
+      - "{{.ADB}} shell 'chmod +x {{.SD}}/System/advance && sync'"
       - "{{.ADB}} reboot"
       - "{{.ADB}} wait-for-device"
       - 'echo "deployed to {{.SD}}{{if .SERIAL}} on {{.SERIAL}}{{end}}, device rebooting"'
@@ -459,7 +459,7 @@ tasks:
     vars:
       SD: '{{.SD | default "/mnt/sdcard"}}'
     cmds:
-      - adb shell 'cat {{.SD}}/Logs/slot.log'
+      - adb shell 'cat {{.SD}}/Logs/advance.log'
 
   clean:
     desc: Remove build output and dist

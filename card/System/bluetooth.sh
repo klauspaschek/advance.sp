@@ -1,11 +1,11 @@
 #!/bin/sh
-# slot Bluetooth v3.1: a live BlueZ agent, structured results and attachable reports.
+# advance.sp Bluetooth v3.1: a live BlueZ agent, structured results and attachable reports.
 set -eu
 ROOT=${SLOT_ROOT:-/mnt/sdcard}
-ROUTE=${SLOT_AUDIO_ROUTE:-/run/slot-audio-device}
+ROUTE=${SLOT_AUDIO_ROUTE:-/run/advance-audio-device}
 PREF="$ROOT/Config/bluetooth-headphones"
 BT=${SLOT_BLUETOOTHCTL:-bluetoothctl}
-LOCK=${SLOT_BT_LOCK:-/run/slot-bluetooth.lock}
+LOCK=${SLOT_BT_LOCK:-/run/advance-bluetooth.lock}
 LOGDIR="$ROOT/Bluetooth"
 VERB=${1:-}
 TARGET=${2:-}
@@ -216,9 +216,9 @@ report() {
         echo '--- Audio route / saved preference ---'
         [ ! -r "$ROUTE" ] || cat "$ROUTE"
         [ ! -r "$PREF" ] || cat "$PREF"
-        echo '--- slot volume settings ---'
-        if [ -r "$ROOT/Config/slot.state" ]; then
-            grep -E '^(volume|volume_hp|volume_bt|volume_usb|muted|muted_hp|muted_bt|muted_usb)=' "$ROOT/Config/slot.state" || true
+        echo '--- advance.sp volume settings ---'
+        if [ -r "$ROOT/Config/advance.state" ]; then
+            grep -E '^(volume|volume_hp|volume_bt|volume_usb|muted|muted_hp|muted_bt|muted_usb)=' "$ROOT/Config/advance.state" || true
         fi
         echo '--- Bluetooth power state (read only) ---'
         for flag in "$OFF" "$ENABLED"; do
@@ -272,8 +272,8 @@ report() {
         cat "$SESSION_LOG"
         echo '--- Installed emulator files ---'
         ls -l "$ROOT/System/"*libretro.so 2>&1 || true
-        echo '--- slot audio / application log (last 120 lines) ---'
-        [ ! -r "$ROOT/Logs/slot.log" ] || tail -n 120 "$ROOT/Logs/slot.log"
+        echo '--- advance.sp audio / application log (last 120 lines) ---'
+        [ ! -r "$ROOT/Logs/advance.log" ] || tail -n 120 "$ROOT/Logs/advance.log"
     } 2>&1 | { head -c 131072; cat >/dev/null; } > "$tmp"
     # Keep just one previous manual snapshot for comparing two audio outputs.
     if [ "$kind" = report ] && [ -f "$file" ]; then
@@ -378,7 +378,7 @@ wait_text() {
         if grep -q 'Authorize service\|Authorize pairing\|Confirm passkey\|Enter PIN code\|Enter passkey' "$WORK/session-output"; then
             if ! pad_authorize; then
                 send no
-                fail 'This device requires pairing confirmation that slot cannot safely provide'
+                fail 'This device requires pairing confirmation that advance.sp cannot safely provide'
             fi
         fi
         if grep -q 'Failed to register agent\|Failed to request default agent' "$WORK/session-output"; then
@@ -454,7 +454,7 @@ wait_property() {
             if grep -q 'Authorize service\|Authorize pairing\|Confirm passkey\|Enter PIN code\|Enter passkey' "$WORK/session-output"; then
                 if ! pad_authorize; then
                     send no
-                    fail 'This device requires pairing confirmation that slot cannot safely provide'
+                    fail 'This device requires pairing confirmation that advance.sp cannot safely provide'
                 fi
             fi
         fi
@@ -632,7 +632,7 @@ pair_device() {
             if grep -q 'Authorize service\|Authorize pairing\|Confirm passkey\|Enter PIN code\|Enter passkey' "$WORK/session-output"; then
                 if ! pad_authorize; then
                     send no
-                    fail 'This device requires pairing confirmation that slot cannot safely provide'
+                    fail 'This device requires pairing confirmation that advance.sp cannot safely provide'
                 fi
             fi
             now=$(grep -c 'Failed to pair:' "$WORK/session-output" || true)
@@ -738,7 +738,7 @@ case "$VERB" in
         printf '%s\n' "$VERB" > "$LOCK/verb"
         ;;
 esac
-log "slot Bluetooth v3.1: verb=$VERB target=$TARGET"
+log "advance.sp Bluetooth v3.1: verb=$VERB target=$TARGET"
 case "$VERB" in
     list) emit_list ;;
     on) start; emit_list ;;
