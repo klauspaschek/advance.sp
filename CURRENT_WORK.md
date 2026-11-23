@@ -1,6 +1,6 @@
-# Active: boot logo redraw
+# No active work
 
-Branch `fix/bootlogo-retro-75` (WORKLOG section "Boot logo redrawn at 75% — 2026-11-23"): the 75% boot logo redrawn with its scanlines and colour fringe intact.
+Latest release `build-2026.11.23-d8383a6`: the 75% boot logo redrawn with its scanlines and colour fringe intact (PR #10; WORKLOG section "Boot logo redrawn at 75% — 2026-11-23").
 
 
 advance.sp is renamed throughout (PR #6, `be330d6`), and the regression workflows pass again (PR #8, `5b6de7f`, released as `build-2026.11.23-5b6de7f`). History: WORKLOG.md, sections "HDMI out — 2026-11-22" (rename and release entries at its end) and "CI regression fixes — 2026-11-23".
