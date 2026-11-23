@@ -9,7 +9,7 @@ const INK: [u8; 3] = [242,232,198];
 // Seven pieces of the firmware wordmark, measured from its left edge (the logo's ink, not the
 // whole screen it is drawn on), cut where its slanted, touching letters are thinnest
 // (A | D | V | AN | CE· | S | P); the gaps around the dot and between S and P are blank.
-const LETTER_EDGES: [f32; 8] = [0.0, 48.0, 99.0, 153.0, 221.0, 333.0, 414.0, 489.0];
+const LETTER_EDGES: [f32; 8] = [0.0, 48.0, 99.0, 152.0, 220.0, 332.0, 412.0, 488.0];
 /// How far from the background a pixel may be and still count as background: the wordmark's
 /// near-black specks must not draw as dark dots.
 const BACKGROUND_TOLERANCE: u8 = 24;
