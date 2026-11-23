@@ -82,12 +82,13 @@ fn main(){
                 if target==QuickRow::Reference {a.tap(Btn::A);a.save("reference");for _ in 0..9 {a.tap(Btn::Right);}a.save("reference-end");a.tap(Btn::B);}
             }
         }
-        if root==QuickRow::Kids {a.tap(Btn::Down);a.save("parent-code-row");a.tap(Btn::A);a.save("parent-code-editor");}
+        // Parental controls are a row of General in advance.sp, not a main tile
+        if root==QuickRow::General {a.nav(QuickRow::Kids);a.tap(Btn::A);a.save("page-Kids");a.tap(Btn::Down);a.save("parent-code-row");a.tap(Btn::A);a.save("parent-code-editor");}
         a.home();
     }
     // Exercise the state that previously collapsed the parent rows and clipped
     // the meter: a real approval, code setup, then activation in the open menu.
-    a.tap(Btn::B);a.tap(Btn::X);a.save("approved-carousel");a.tap(Btn::Menu);a.nav(QuickRow::Kids);a.tap(Btn::A);
+    a.tap(Btn::B);a.tap(Btn::X);a.save("approved-carousel");a.tap(Btn::Menu);a.nav(QuickRow::General);a.tap(Btn::A);a.nav(QuickRow::Kids);a.tap(Btn::A);
     a.tap(Btn::Down);a.tap(Btn::A);
     a.save("parent-code-choose");
     for b in [Btn::L1,Btn::R1,Btn::L2]{a.tap(b);}

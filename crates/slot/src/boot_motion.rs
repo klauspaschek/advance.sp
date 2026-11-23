@@ -40,6 +40,9 @@ fn spatial(ms: f32) -> f32 {
     1.0-(-damping*omega*t).exp()*((damped*t).cos()+damping*omega/damped*(damped*t).sin())
 }
 fn reveal(ms:u64)->f32 {smooth((ms as f32-180.0)/460.0)}
+/// Nothing moves before this (the first letter gathers from 40 ms, the scene shows from 180 ms):
+/// until then the firmware's own picture stays on screen, exactly as it drew it.
+const HOLD_MS: u64 = 40;
 fn blob_pose(ms:u64,canvas:Canvas)->[f32;4] {
     let t=((ms as f32-DROP_MS as f32)/(LAND_MS-DROP_MS)as f32).clamp(0.0,1.0);
     // Acceleration carries the blob through the opening instead of braking it
@@ -54,8 +57,13 @@ fn blob_pose(ms:u64,canvas:Canvas)->[f32;4] {
 }
 
 /// The wordmark cut out of the firmware logo (`w` by `h`, at `at` within it), and the logo's
-/// whole size (`full`), to start exactly where the firmware showed it.
-pub struct BootMotion { tex: TexId, blob: TexId, w: f32, h: f32, at: [f32; 2], full: [f32; 2] }
+/// whole size (`full`), to start exactly where the firmware showed it. `background` is the logo's
+/// own background, under the letters until the launcher shows; `hold` is the firmware's whole
+/// picture for one canvas size (see `prepare`).
+pub struct BootMotion {
+    tex: TexId, blob: TexId, w: f32, h: f32, at: [f32; 2], full: [f32; 2],
+    background: [u8; 3], logo: crate::bootlogo::Bmp, hold: Option<(TexId, [u32; 2])>,
+}
 impl BootMotion {
     pub fn upload(c: &mut Compositor) -> Option<Self> {
         // One small mark texture shared by all seven glyphs, plus a 64px blob.
@@ -71,7 +79,22 @@ impl BootMotion {
             [INK[0],INK[1],INK[2],((32.5-distance).clamp(0.0,1.0)*255.0).round()as u8]
         })).collect();
         Some(Self{tex:c.create_texture(w as u32,h as u32,&rgba),blob:c.create_texture(64,64,&blob),
-            w:w as f32,h:h as f32,at:[x0 as f32,y0 as f32],full:[logo.width as f32,logo.height as f32]})
+            w:w as f32,h:h as f32,at:[x0 as f32,y0 as f32],full:[logo.width as f32,logo.height as f32],
+            background,logo,hold:None})
+    }
+    /// Uploads the picture the firmware shows on this canvas (`bootlogo::compose`, as installed for
+    /// the panel), so the first frames hand off without a change: the full-screen logo's own
+    /// background, its near-black specks and its shrinking on smaller screens included.
+    pub fn prepare(&mut self, c: &mut Compositor, canvas: Canvas) {
+        let size=[canvas.w as u32,canvas.h as u32];
+        if size[0]==0 || size[1]==0 || self.hold.is_some_and(|(_,held)|held==size) {return;}
+        let Some(shown)=crate::bootlogo::compose(&self.logo,(size[0] as usize,size[1] as usize)) else {return};
+        let rgba:Vec<u8>=shown.rgb.iter().flat_map(|p|[p[0],p[1],p[2],255]).collect();
+        let tex=match self.hold {
+            Some((tex,_))=>{c.update_texture(tex,size[0],size[1],&rgba);tex}
+            None=>c.create_texture(size[0],size[1],&rgba),
+        };
+        self.hold=Some((tex,size));
     }
     /// Where the firmware drew the wordmark on this canvas, `[x, y, scale]`: the logo centred, and
     /// shrunk whole when it is bigger than the screen, as `bootlogo::compose` builds it.
@@ -83,8 +106,15 @@ impl BootMotion {
     }
     pub fn draw(&self, ms:u64, canvas:Canvas, out:&mut Vec<Draw>) {
         if ms>=BOOT_MS {return;}
+        if ms<HOLD_MS {
+            if let Some((tex,_))=self.hold.filter(|(_,held)|*held==[canvas.w as u32,canvas.h as u32]) {
+                out.push(Draw::Tex{x:0.0,y:0.0,w:canvas.w,h:canvas.h,tex,alpha:1.0});
+                return;
+            }
+        }
         let ground=1.0-reveal(ms);
-        if ground>0.0 {out.push(Draw::Rect{x:0.0,y:0.0,w:canvas.w,h:canvas.h,colour:[11.0/255.0,14.0/255.0,17.0/255.0,ground]});}
+        let [r,g,b]=self.background.map(|c|c as f32/255.0);
+        if ground>0.0 {out.push(Draw::Rect{x:0.0,y:0.0,w:canvas.w,h:canvas.h,colour:[r,g,b,ground]});}
         let [ox,oy,scale]=self.placed(canvas);
         let origin=[ox,oy];
         let (mark_w,mark_h)=(self.w*scale,self.h*scale);
@@ -132,7 +162,7 @@ impl BootMotion {
             _=>{}
         }}
     }
-    pub fn release(self,c:&mut Compositor){for tex in [self.tex,self.blob] {c.update_texture(tex,1,1,&[0,0,0,0]);}}
+    pub fn release(self,c:&mut Compositor){for tex in [self.tex,self.blob].into_iter().chain(self.hold.map(|(tex,_)|tex)) {c.update_texture(tex,1,1,&[0,0,0,0]);}}
 }
 
 #[cfg(test)]
@@ -141,7 +171,8 @@ mod tests {
     fn logo()->crate::bootlogo::Bmp {crate::bootlogo::decode(include_bytes!("../../../card/System/bootlogo.bmp")).unwrap()}
     fn motion()->BootMotion {
         let logo=logo();let [x,y,w,h]=ink_bounds(&logo).unwrap();
-        BootMotion{tex:TexId::from_raw(1),blob:TexId::from_raw(2),w:w as f32,h:h as f32,at:[x as f32,y as f32],full:[logo.width as f32,logo.height as f32]}
+        BootMotion{tex:TexId::from_raw(1),blob:TexId::from_raw(2),w:w as f32,h:h as f32,at:[x as f32,y as f32],full:[logo.width as f32,logo.height as f32],
+            background:logo.rgb[0],logo,hold:None}
     }
     /// The logo as the firmware shows it on a `width` by `height` screen.
     fn firmware(width:usize,height:usize)->crate::bootlogo::Bmp {crate::bootlogo::compose(&logo(),(width,height)).unwrap()}

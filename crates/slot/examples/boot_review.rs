@@ -14,12 +14,12 @@ fn main(){
     let mut g=Compositor::new(&surface).unwrap();g.fit((width,480));
     let mut f=Frontend::boot(Box::new(slot_power::SimPlatform::at(root.clone())));f.upload_faces(&mut g);
     f.render(&mut g,(width,480));
-    let motion=BootMotion::upload(&mut g).unwrap();
+    let mut motion=BootMotion::upload(&mut g).unwrap();
     let firmware=slot::bootlogo::decode(include_bytes!("../../../card/System/bootlogo.bmp")).unwrap();
     let firmware=slot::bootlogo::compose(&firmware,(width as usize,480)).unwrap();
     for frame in 0..=(BOOT_MS*60).div_ceil(1000)+2 {
         let ms=frame*1000/60;f.compose(&mut g);let normal=g.read_frame();
-        f.compose_boot_frame(&mut g,&motion,ms);let pixels=g.read_frame();
+        f.compose_boot_frame(&mut g,&mut motion,ms);let pixels=g.read_frame();
         if ms<=33 {for (rgba,rgb) in pixels.chunks_exact(4).zip(&firmware.rgb) {assert_eq!(&rgba[..3],rgb,"boot handoff must open on the exact firmware logo");}}
         if (760..BOOT_MS).contains(&ms) {
             let bay=((480-slot_ui::MOUTH_H as u32)*width*4)as usize;
