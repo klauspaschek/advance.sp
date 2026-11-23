@@ -99,8 +99,15 @@ fn adult_reference_is_reachable_from_both_menus_and_returns_without_changing_set
     press(&mut a,Btn::Right);
     press(&mut a,Btn::Down);
     press(&mut a, Btn::A);
-    press(&mut a, Btn::Up);
-    press(&mut a, Btn::Up);
+    assert_eq!(a.quick_menu(), Some(QuickRow::ControlsShelf));
+    // Up wraps from the first Controls page to the last (Test buttons), then
+    // climbs In-Game to reach Reference.
+    for _ in 0..QuickRow::CONTROL_PAGES.len() {
+        if a.quick_menu() == Some(QuickRow::Reference) {
+            break;
+        }
+        press(&mut a, Btn::Up);
+    }
     assert_eq!(a.quick_menu(), Some(QuickRow::Reference));
     press(&mut a, Btn::A);
     assert!(a.kid_menu.as_ref().unwrap().reference_open());

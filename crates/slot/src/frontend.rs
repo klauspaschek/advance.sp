@@ -628,11 +628,11 @@ impl Frontend {
     pub fn render(&mut self, compositor: &mut Compositor, window: (u32, u32)) {
         self.session.app_mut().set_panel(window);
         compositor.fit(window);
-        if let Some((brand,started))=self.boot_intro.take() {
+        if let Some((mut brand,started))=self.boot_intro.take() {
             let elapsed=started.map_or(0,|start|start.elapsed().as_millis()as u64);
             if !self.boot_intro_cancelled && elapsed<crate::boot_motion::BOOT_MS
                 && matches!(self.session.app().phase(),crate::app::Phase::Shelf) {
-                self.compose_boot_frame(compositor,&brand,elapsed);
+                self.compose_boot_frame(compositor,&mut brand,elapsed);
                 // First-frame texture setup can be expensive on the handheld.
                 // Start motion only after the static firmware frame is built.
                 self.boot_intro=Some((brand,Some(started.unwrap_or_else(Instant::now))));
@@ -681,8 +681,9 @@ impl Frontend {
         self.compose_scene(compositor,None);
     }
 
-    pub fn compose_boot_frame(&mut self,compositor:&mut Compositor,motion:&crate::boot_motion::BootMotion,ms:u64) {
-        self.compose_scene(compositor,Some((motion,ms)));
+    pub fn compose_boot_frame(&mut self,compositor:&mut Compositor,motion:&mut crate::boot_motion::BootMotion,ms:u64) {
+        motion.prepare(compositor,self.session.app().canvas());
+        self.compose_scene(compositor,Some((&*motion,ms)));
     }
 
     fn compose_scene(&mut self,compositor:&mut Compositor,intro:Option<(&crate::boot_motion::BootMotion,u64)>) {
