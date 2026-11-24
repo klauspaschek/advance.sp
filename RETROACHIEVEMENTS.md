@@ -1,6 +1,6 @@
 # Wi-Fi and RetroAchievements test build
 
-This branch adds optional Wi-Fi and GBA achievement tracking. Both start off.
+This branch adds optional Wi-Fi and achievement tracking for GBA, GB and GBC games. Both start off.
 About moves to General; Network takes its existing grid square. RetroAchievements is
 the first entry under Gameplay. The grid still has eight entries.
 
@@ -73,13 +73,18 @@ password, enable achievements and choose Sign in / sync. A successful sign-in
 replaces the account password in memory with the emulator login token. If encrypted
 storage is unlocked, that token is saved encrypted too.
 
+GB and GBC games run on mGBA and use RetroAchievements' Game Boy address space: the
+$0000-$FFFF bus, Game Boy Color work RAM banks 2-7 at 0x10000 and cartridge RAM banks 1-15
+at 0x16000, the same layout RetroArch provides. A game opened for link play is not tracked.
+
 Tracking starts with the next inserted game. Reinsert a game after changing account
-or enabling tracking. GB/GBC, hardcore mode and leaderboards are outside this draft.
+or enabling tracking. Hardcore mode and leaderboards are outside this draft.
 Resume, save states, rewind and fast-forward remain available in casual/softcore mode.
 
-Leave the handheld connected while the backend prepares the GBA library. The status
+Leave the handheld connected while the backend prepares the game library. The status
 shows Preparing / syncing, then Up to date. Unsupported ROM hashes have no rules to
-prepare. Firmware time must be correct for verified HTTPS; use General → Date & Time
+prepare. RetroAchievements also knows some versions it does not serve achievements for
+(for example untested or incompatible translations); these are cached as having no achievements. Firmware time must be correct for verified HTTPS; use General → Date & Time
 if sign-in fails after a cold start. Certificate verification is never disabled.
 
 Prepared games can earn achievements without internet. Unlocks are saved before their
@@ -122,15 +127,15 @@ in the status bar.
 
 ## Preparation and background sync
 
-Signing in and preparing games are separate steps. The first pass checks each GBA ROM in `Games/GBA`, caches its achievement rules and server unlocks without downloading every achievement badge. Game-data requests remain paced; a large library or slow connection can still take time. Opening Settings does not restart preparation.
+Signing in and preparing games are separate steps. The first pass checks each ROM in `Games/GBA`, `Games/GB` and `Games/GBC`, caches its achievement rules and server unlocks without downloading every achievement badge. Game-data requests remain paced; a large library or slow connection can still take time. Opening Settings does not restart preparation.
 
-The controller in the status bar means RetroAchievements is working in the background. The settings page shows game data, optional artwork, pending uploads and games that need another attempt. A connection or account error shows retry status rather than pretending preparation is still moving. Preparation continues on the shelf and during play while slot is running. It pauses when the device sleeps, shuts down, or loses internet; downloaded data and earned unlocks persist. Signing out or turning achievements off stops the worker. A restart uses cached data and prepares remaining or changed games; it also refreshes old data weekly. Newly played games take priority over the background library.
+The medal in the status bar means RetroAchievements is working in the background; the progress pill on the RetroAchievements page shows the same medal. The settings page shows game data, optional artwork, pending uploads and games that need another attempt. A connection or account error shows retry status rather than pretending preparation is still moving. Preparation continues on the shelf and during play while slot is running. It pauses when the device sleeps, shuts down, or loses internet; downloaded data and earned unlocks persist. Signing out or turning achievements off stops the worker. A restart uses cached data and prepares remaining or changed games; it also refreshes old data weekly. Newly played games take priority over the background library.
 
 Completed game preparation makes cached tracking available offline. It does not mean every game has achievements, and it is separate from whether the server accepts deferred unlock uploads.
 
 ### Reading background sync
 
-The controller stays visible while game data, enabled artwork or unlock uploads remain queued, including retry waits. It disappears when no work remains. Settings shows a stable sync state, separate game/artwork counts, and a retry countdown with its cause. Completed cached games still count after a restart; an empty GBA library says “No GBA games”. An artwork retry does not mean Wi-Fi disconnected or that cached achievements stopped working. Badge failures back off from 30 seconds to five minutes and respect longer server Retry-After instructions (including HTTP dates); other sync work can continue. Preparation is paced to reduce background load, but a large first scan still reads ROMs and uses the radio.
+The controller stays visible while game data, enabled artwork or unlock uploads remain queued, including retry waits. It disappears when no work remains. Settings shows a stable sync state, separate game/artwork counts, and a retry countdown with its cause. Completed cached games still count after a restart; an empty library says “No games”. An artwork retry does not mean Wi-Fi disconnected or that cached achievements stopped working. Badge failures back off from 30 seconds to five minutes and respect longer server Retry-After instructions (including HTTP dates); other sync work can continue. Preparation is paced to reduce background load, but a large first scan still reads ROMs and uses the radio.
 
 For optional live testing, add `RA_TEST_USERNAME` and `RA_TEST_PASSWORD` in GitHub Settings → Secrets and variables → Actions. Prefer a dedicated test account. Run **RetroAchievements live smoke test** manually on a reviewed repository branch. It checks login, a read-only game lookup and a public badge download/decode; it never creates a game session or submits awards. Normal pull-request tests use fake servers and do not receive those secrets. Live smoke tests cannot measure handheld radio reliability, CPU load or temperature.
 
@@ -144,6 +149,6 @@ Only the chosen scope is discovered and validated in bounded worker batches. Dup
 
 ### Browse the current game's achievements
 
-With RetroAchievements enabled and a GBA game loaded, open **Achievements** directly in the pause menu. It is hidden when the RetroAchievements toggle is Off or the game is unsupported. The existing **Settings → Gameplay → RetroAchievements → Browse current game** route is also available. The list uses that account's cached game definitions and combines server unlocks with locally earned unlocks waiting to upload, so it also works offline. No images or game data are downloaded just because the list is opened. Cached badges are reused; missing images show a lock or earned checkmark.
+With RetroAchievements enabled and a GBA, GB or GBC game loaded, open **Achievements** directly in the pause menu. It is hidden when the RetroAchievements toggle is Off or the game is unsupported. The existing **Settings → Gameplay → RetroAchievements → Browse current game** route is also available. The list uses that account's cached game definitions and combines server unlocks with locally earned unlocks waiting to upload, so it also works offline. No images or game data are downloaded just because the list is opened. Cached badges are reused; missing images show a lock or earned checkmark.
 
 Use Up/Down to browse, Left/Right to filter All / Locked / Earned, and L/R to move a page. The expanded list shows five rows with padded game information. A opens the selected achievement's cached badge, full title, points, earned state and description; long descriptions scroll with Up/Down or L/R. Left/Right moves between achievements in the detail view. B returns to the list, then to the pause menu or RetroAchievements settings, depending on where you opened it. A game without cached data explains that it must be prepared online first; opening the browser never enables Wi-Fi or starts a game session.

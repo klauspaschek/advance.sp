@@ -20,8 +20,8 @@ pub struct AchievementList {
 /// Call on a background worker. This never starts a session or downloads images.
 pub fn cached_achievements(root: &Path, username: &str, rom: &Path) -> Result<AchievementList, &'static str> {
     if username.trim().is_empty() { return Err("Sign in to browse achievements"); }
-    if !rom.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("gba")) {
-        return Err("Achievement tracking currently supports GBA games");
+    if crate::library::platform(rom).is_none() {
+        return Err("Achievement tracking supports GBA, GB and GBC games");
     }
     let dir = storage::account_dir(root, username);
     let hash = crate::library::content_hash(rom).map_err(|_| "Cannot read this game")?;

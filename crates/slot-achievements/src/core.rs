@@ -2,7 +2,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc};
 
-use slot_retro::{AvInfo, ButtonMask, CoreError, Link, RetroCore, Rumble};
+use slot_retro::{AchievementLayout, AvInfo, ButtonMask, CoreError, Link, RetroCore, Rumble};
 
 use crate::{network, Control, Frame, Service, QUEUE_SIZE, RAM_SIZE};
 
@@ -10,6 +10,7 @@ static NEXT_GAME: AtomicU64 = AtomicU64::new(1);
 
 pub(crate) struct Tracked {
     core: Box<dyn RetroCore>,
+    layout: AchievementLayout,
     controls: mpsc::Sender<Control>,
     frames: mpsc::SyncSender<Frame>,
     recycled: mpsc::Receiver<Vec<u8>>,
@@ -24,10 +25,11 @@ pub(crate) struct Tracked {
 }
 
 impl Tracked {
-    pub fn new(core: Box<dyn RetroCore>, service: &Service) -> Self {
+    pub fn new(core: Box<dyn RetroCore>, layout: AchievementLayout, service: &Service) -> Self {
         let (recycle, recycled) = mpsc::sync_channel(QUEUE_SIZE + 1);
         Self {
             core,
+            layout,
             controls: service.controls.clone(),
             frames: service.frames.clone(),
             recycled,
@@ -55,8 +57,8 @@ impl Tracked {
             }
             Err(_) => return,
         };
-        let valid = self.core.achievement_memory(&mut ram);
-        if valid[0] < 0x8000 || valid[1] < 0x40000 {
+        let valid = self.core.achievement_memory(self.layout, &mut ram);
+        if !self.layout.complete(&valid) {
             let _ = self.recycle.try_send(ram);
             return;
         }
@@ -64,6 +66,7 @@ impl Tracked {
             generation: self.generation,
             sequence: self.sequence,
             timeline: self.timeline,
+            layout: self.layout,
             earned_at: network::now(),
             ram,
             valid,
@@ -152,8 +155,8 @@ impl RetroCore for Tracked {
         self.core.stop_link();
         self.timeline += 1;
     }
-    fn achievement_memory(&self, ram: &mut [u8]) -> [usize; 3] {
-        self.core.achievement_memory(ram)
+    fn achievement_memory(&self, layout: AchievementLayout, ram: &mut [u8]) -> [usize; 3] {
+        self.core.achievement_memory(layout, ram)
     }
 }
 

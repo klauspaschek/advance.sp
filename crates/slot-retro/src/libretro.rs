@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use libloading::Library;
 
-use crate::core::{AvInfo, ButtonMask, CoreError, RetroCore, GBA_H, GBA_W};
+use crate::core::{AchievementLayout, AvInfo, ButtonMask, CoreError, RetroCore, GBA_H, GBA_W};
 use crate::ffi::*;
 use crate::link::Link;
 use crate::rumble::Rumble;
@@ -564,8 +564,37 @@ impl Drop for LibretroCore {
     }
 }
 
+impl LibretroCore {
+    /// RetroAchievements' GB/GBC address space, assembled from the core's memory map the
+    /// way RetroArch reads it: the $0000-$FFFF bus (echo RAM mirrors $C000), then CGB
+    /// work RAM banks 2-7 at 0x10000 and cartridge RAM banks 1-15 at 0x16000.
+    fn gb_achievement_memory(&self, ram: &mut [u8]) -> [usize; 3] {
+        const SPACE: usize = 0x34000;
+        if ram.len() < SPACE { return [0; 3]; }
+        if !self.host.memory_map.iter().any(|d| d.start == 0xc000 && d.ptr != 0 && d.disconnect == 0) {
+            return [0; 3];
+        }
+        ram[..SPACE].fill(0);
+        let mut valid = [0x10000, 0, 0];
+        for d in &self.host.memory_map {
+            if d.ptr == 0 || d.disconnect != 0 || d.len == 0 || d.start >= SPACE { continue; }
+            // A descriptor never spills into the next region.
+            let end = [0x10000, 0x16000, SPACE].into_iter().find(|end| d.start < *end).unwrap_or(SPACE);
+            let n = d.len.min(end - d.start);
+            let Some(ptr) = d.ptr.checked_add(d.offset) else { continue };
+            // Libretro owns and guarantees descriptor pointers on this core's thread.
+            let data = unsafe { std::slice::from_raw_parts(ptr as *const u8, n) };
+            ram[d.start..d.start + n].copy_from_slice(data);
+            match d.start { 0x10000 => valid[1] = n, 0x16000 => valid[2] = n, _ => {} }
+        }
+        ram.copy_within(0xc000..0xde00, 0xe000);
+        valid
+    }
+}
+
 impl RetroCore for LibretroCore {
-    fn achievement_memory(&self, ram: &mut [u8]) -> [usize; 3] {
+    fn achievement_memory(&self, layout: AchievementLayout, ram: &mut [u8]) -> [usize; 3] {
+        if layout == AchievementLayout::Gb { return self.gb_achievement_memory(ram); }
         if ram.len() < 0x58000 { return [0; 3]; }
         let mut valid = [0; 3];
         for (i, (start, dest, capacity)) in [(0x03000000, 0, 0x8000), (0x02000000, 0x8000, 0x40000), (0x0e000000, 0x48000, 0x10000)].into_iter().enumerate() {

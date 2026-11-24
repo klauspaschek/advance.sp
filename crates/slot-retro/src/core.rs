@@ -75,11 +75,51 @@ impl From<std::io::Error> for CoreError {
     }
 }
 
+/// How a snapshot is arranged: three regions placed at RetroAchievements addresses.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum AchievementLayout {
+    /// IWRAM at 0, EWRAM at 0x8000, save RAM at 0x48000 (RA console 5).
+    Gba,
+    /// The $0000-$FFFF bus, CGB work RAM banks 2-7 at 0x10000 and cartridge RAM
+    /// banks 1-15 at 0x16000 (RA consoles 4 and 6).
+    Gb,
+}
+
+impl AchievementLayout {
+    /// Bytes a snapshot buffer needs; the largest layout decides the buffer size.
+    pub const SNAPSHOT_SIZE: usize = 0x58000;
+
+    /// RetroAchievements address of each region's first byte.
+    pub const fn starts(self) -> [usize; 3] {
+        match self {
+            AchievementLayout::Gba => [0, 0x8000, 0x48000],
+            AchievementLayout::Gb => [0, 0x10000, 0x16000],
+        }
+    }
+
+    /// Largest size of each region.
+    pub const fn capacity(self) -> [usize; 3] {
+        match self {
+            AchievementLayout::Gba => [0x8000, 0x40000, 0x10000],
+            AchievementLayout::Gb => [0x10000, 0x6000, 0x1e000],
+        }
+    }
+
+    /// Work RAM must be complete before a frame may be evaluated.
+    pub const fn complete(self, valid: &[usize; 3]) -> bool {
+        match self {
+            AchievementLayout::Gba => valid[0] >= 0x8000 && valid[1] >= 0x40000,
+            AchievementLayout::Gb => valid[0] >= 0x10000,
+        }
+    }
+}
+
 pub trait RetroCore: Send {
     /// Only committed forward play is eligible for achievements.
     fn achievement_tracking(&mut self, _on: bool) {}
-    /// Copy GBA RAM on the owning thread; unsupported cores return no valid regions.
-    fn achievement_memory(&self, _ram: &mut [u8]) -> [usize; 3] { [0; 3] }
+    /// Copy achievement RAM in `layout` on the owning thread; unsupported cores return
+    /// no valid regions.
+    fn achievement_memory(&self, _layout: AchievementLayout, _ram: &mut [u8]) -> [usize; 3] { [0; 3] }
     fn load(&mut self, rom: &Path) -> Result<(), CoreError>;
     fn run_frame(&mut self, input: ButtonMask);
     fn run_frame_linked(&mut self, p1: ButtonMask, _p2: ButtonMask) {

@@ -4,6 +4,20 @@ pub const METER_W: u32 = 176;
 pub const METER_H: u32 = 52;
 
 pub fn filled_meter_face(label: &str, icon: Option<Icon>, fraction: f32, light: bool, w: u32, h: u32) -> UndoFace {
+    let size=24;
+    let glyph=if let Some(icon)=icon {crate::control_icon_face(icon,size,[255;3])}else{
+        let svg=r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><g fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/></g></svg>"##;
+        crate::CartFace{rgba:crate::art::render_svg(svg,size,size).expect("time icon"),w:size,h:size}
+    };
+    meter_face(label,glyph,fraction,light,w,h)
+}
+
+/// RetroAchievements progress: the status bar's medal, not a controller.
+pub fn achievement_meter_face(label: &str, fraction: f32, light: bool, w: u32, h: u32) -> UndoFace {
+    meter_face(label,crate::achievement_badge_face([255;3]),fraction,light,w,h)
+}
+
+fn meter_face(label: &str, glyph: crate::CartFace, fraction: f32, light: bool, w: u32, h: u32) -> UndoFace {
     let (track,fill,filled_ink,empty_ink):([f32;4],[f32;4],[u8;3],[u8;3])=if light {
         ([0.82,0.82,0.82,1.0],[0.20,0.20,0.20,1.0],[250,250,250],[28,28,28])
     } else {([0.30,0.30,0.30,1.0],[0.95,0.95,0.95,1.0],[22,22,22],[246,246,246])};
@@ -19,14 +33,10 @@ pub fn filled_meter_face(label: &str, icon: Option<Icon>, fraction: f32, light: 
     let tw=layout.lines.first().map_or(0.0,|line|text::line_width(font,line,layout.px,layout.tracking)).ceil()as u32+2;
     let mut words=vec![0;(tw*h*4)as usize];
     text::draw_centred(&mut words,tw,h,&layout,[255;3]);
-    let size=24;
+    let size=glyph.w;
     let left=w.saturating_sub(tw+size+12)/2;
     let mut mask=vec![0;(w*h*4)as usize];
     crate::plate::blit(&mut mask,w,&words,tw,h,left+size+12,0);
-    let glyph=if let Some(icon)=icon {crate::control_icon_face(icon,size,[255;3])}else{
-        let svg=r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><g fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/></g></svg>"##;
-        crate::CartFace{rgba:crate::art::render_svg(svg,size,size).expect("time icon"),w:size,h:size}
-    };
     crate::plate::blit(&mut mask,w,&glyph.rgba,glyph.w,glyph.h,left,(h-glyph.h)/2);
     for (i,(p,ink)) in face.rgba.chunks_exact_mut(4).zip(mask.chunks_exact(4)).enumerate() {
         let colour=if ((i as u32%w)as f32) < edge {filled_ink}else{empty_ink};

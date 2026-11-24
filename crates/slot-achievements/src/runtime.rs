@@ -1,6 +1,8 @@
 use std::ffi::{c_char, c_int, c_void, CString};
 use std::ptr::NonNull;
 
+use slot_retro::AchievementLayout;
+
 unsafe extern "C" {
     fn rc_runtime_alloc() -> *mut c_void;
     fn rc_runtime_destroy(runtime: *mut c_void);
@@ -22,6 +24,7 @@ unsafe extern "C" {
     fn slot_ra_frame(
         runtime: *mut c_void,
         ram: *const u8,
+        starts: *const usize,
         valid: *const usize,
         earned: *mut u32,
         capacity: usize,
@@ -118,13 +121,17 @@ impl Runtime {
         }
     }
 
-    pub fn frame(&mut self, ram: &[u8], valid: &[usize; 3]) -> &[u32] {
-        assert!(ram.len() >= 0x58000);
-        assert!(valid[0] <= 0x8000 && valid[1] <= 0x40000 && valid[2] <= 0x10000);
+    pub fn frame(&mut self, layout: AchievementLayout, ram: &[u8], valid: &[usize; 3]) -> &[u32] {
+        let (starts, capacity) = (layout.starts(), layout.capacity());
+        for region in 0..3 {
+            assert!(valid[region] <= capacity[region]);
+            assert!(starts[region] + capacity[region] <= ram.len());
+        }
         let count = unsafe {
             slot_ra_frame(
                 self.ptr.as_ptr(),
                 ram.as_ptr(),
+                starts.as_ptr(),
                 valid.as_ptr(),
                 self.earned.as_mut_ptr(),
                 self.earned.len(),

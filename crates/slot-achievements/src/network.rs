@@ -302,25 +302,37 @@ struct Active {
     status: &'static str,
 }
 
+/// Real RetroAchievements game IDs are small. The server answers a hash it knows but
+/// cannot serve (untested, incompatible or patch-required versions) with the game ID
+/// plus a multiple of 10^8 at or above 10^9; no patch data exists for those.
+const UNSERVED_GAME_ID: u64 = 1_000_000_000;
+
+/// The cached entry for a ROM without achievements, so it is not looked up again.
+fn without_achievements(id: u64, console: u32) -> Game {
+    Game {
+        presence: String::new(),
+        id: 0,
+        console,
+        title: if id >= UNSERVED_GAME_ID {
+            "No achievements for this ROM version".into()
+        } else {
+            "No achievements for this ROM".into()
+        },
+        achievements: vec![],
+    }
+}
+
 fn prefetch(
     http: &mut impl Transport,
     auth: &Auth,
     dir: &std::path::Path,
     hash: &str,
+    console: u32,
 ) -> Result<Game, Failure> {
     let resolved = call(http, auth, "gameid", &[("m", hash.into())])?;
     let id = resolved["GameID"].as_u64().ok_or(Failure::Invalid)?;
-    let (game, ids) = if id == 0 {
-        (
-            Game {
-                presence: String::new(),
-                id: 0,
-                console: 5,
-                title: "No achievements for this ROM".into(),
-                achievements: vec![],
-            },
-            BTreeSet::new(),
-        )
+    let (game, ids) = if id == 0 || id >= UNSERVED_GAME_ID {
+        (without_achievements(id, console), BTreeSet::new())
     } else {
         let patch = call(http, auth, "patch", &[("g", id.to_string())])?;
         let game: Game =
@@ -394,7 +406,7 @@ pub(crate) fn run(
                 badges.reset();
                 badges.select(&root, artwork);
                 active = load.and_then(|load| {
-                    // GBA identification is the MD5 of the complete uncompressed ROM.
+                    // GBA, GB and GBC identification is the MD5 of the complete ROM file.
                     // File I/O and hashing happen here, never on the emulator/UI threads.
                     let hash = crate::library::hash(&dir, &load.path).ok()?;
                     let mut game = Active {
@@ -535,10 +547,10 @@ pub(crate) fn run(
                     if !game.online {
                         let resolved = call(&mut http, auth, "gameid", &[("m", game.hash.clone())])?;
                         let id = resolved["GameID"].as_u64().ok_or(Failure::Invalid)?;
-                        if id == 0 {
+                        if id == 0 || id >= UNSERVED_GAME_ID {
                             game.online = true;
                             game.ready = false;
-                            game.status = "No achievements";
+                            game.status = if id == 0 { "No achievements" } else { "Version unsupported" };
                         } else {
                             let patch = call(&mut http, auth, "patch", &[("g", id.to_string())])?;
                             let data: Game = serde_json::from_value(patch["PatchData"].clone())
@@ -604,7 +616,7 @@ pub(crate) fn run(
             // `startsession`, so preparing a library doesn't claim the user played it.
             if let Some(path) = library.front() {
                 if let Ok(hash) = crate::library::hash(&dir, path) {
-                    match prefetch(&mut http, auth, &dir, &hash) {
+                    match prefetch(&mut http, auth, &dir, &hash, crate::library::console_hint(path)) {
                         Ok(game) => {
                             crate::library::checked(&dir, path, now());
                             if crate::badges::selected(&root, path, artwork) { badges.enqueue(&game); }

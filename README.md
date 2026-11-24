@@ -18,6 +18,7 @@
 | 📶 **A Bluetooth tile** in the menu: one place for the radio, headphones and controllers | ✅ Done |
 | 🎧 **Headphones that behave**: their volume buttons and slot's stay in step, headphones that connect by themselves take the sound, and volume never jumps loud out of mute | ✅ Done |
 | 📺 **[HDMI out](#on-a-tv-hdmi)** through the RG SP's mini HDMI port: plug in a TV and the picture follows the cable, with the TV's sound, optional TV bezels and the shader off | ✅ Done, tested on an RG SP with a 1080p TV |
+| 🏅 **[RetroAchievements](RETROACHIEVEMENTS.md) for GB and GBC**, not only GBA, with a medal on the achievement progress pill | 🧪 Built and tested on the desktop; device test pending |
 
 ### Menu changes from slot.sp
 

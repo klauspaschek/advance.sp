@@ -6,7 +6,26 @@ use std::time::UNIX_EPOCH;
 
 use serde::{Deserialize, Serialize};
 
+use slot_store::Platform;
+
 use crate::storage;
+
+/// The shelf a ROM belongs to: its `Games/<GBA|GB|GBC>` folder, else its extension.
+pub(crate) fn platform(rom: &Path) -> Option<Platform> {
+    let folder = rom.parent().and_then(|p| p.file_name()).and_then(|n| n.to_str());
+    Platform::ALL
+        .into_iter()
+        .find(|p| folder.is_some_and(|f| f.eq_ignore_ascii_case(p.dir_name())) && p.accepts(rom))
+        .or_else(|| {
+            let ext = rom.extension()?.to_str()?.to_ascii_lowercase();
+            match ext.as_str() { "gba" => Some(Platform::Gba), "gbc" => Some(Platform::Gbc), "gb" => Some(Platform::Gb), _ => None }
+        })
+}
+
+/// The RetroAchievements console to record for a ROM the server does not know.
+pub(crate) fn console_hint(rom: &Path) -> u32 {
+    match platform(rom) { Some(Platform::Gb) => 4, Some(Platform::Gbc) => 6, _ => 5 }
+}
 
 #[derive(Serialize, Deserialize)]
 struct Entry {
@@ -63,19 +82,21 @@ pub(crate) fn pending(root: &Path, dir: &Path, now: u64) -> VecDeque<PathBuf> {
 
 pub(crate) fn scan(root:&Path,dir:&Path,now:u64)->(usize,VecDeque<PathBuf>) {
     let index: Index = storage::read(&dir.join("library.json")).unwrap_or_default();
-    let paths: Vec<_> = std::fs::read_dir(root.join("Games/GBA"))
+    let paths: Vec<_> = Platform::ALL
         .into_iter()
-        .flatten()
-        .filter_map(Result::ok)
-        .map(|e| e.path())
-        .filter(|path| {
-            path.is_file()
-                && path
-                    .extension()
-                    .is_some_and(|ext| ext.eq_ignore_ascii_case("gba"))
-                && !path
-                    .file_name()
-                    .is_some_and(|name| name.to_string_lossy().starts_with('.'))
+        .flat_map(|platform| {
+            std::fs::read_dir(root.join("Games").join(platform.dir_name()))
+                .into_iter()
+                .flatten()
+                .filter_map(Result::ok)
+                .map(|e| e.path())
+                .filter(move |path| {
+                    path.is_file()
+                        && platform.accepts(path)
+                        && !path
+                            .file_name()
+                            .is_some_and(|name| name.to_string_lossy().starts_with('.'))
+                })
         })
         .collect();
     let total=paths.len();
@@ -110,7 +131,7 @@ pub(crate) fn content_hash(path: &Path) -> Result<String, String> {
         .map_err(|_| "Cannot read ROM metadata")?
         .len();
     if size == 0 || size > 64 * 1024 * 1024 {
-        return Err("Unsupported GBA ROM size".into());
+        return Err("Unsupported ROM size".into());
     }
     let mut file = std::fs::File::open(path).map_err(|_| "Cannot open ROM")?;
     let mut buffer = [0; 64 * 1024];

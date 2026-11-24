@@ -808,9 +808,11 @@ impl Session {
         let resume = self.app.card_read("resume", loaded.resume);
         let (sav_unread, resume_unread) = (sav.is_none(), resume.is_none());
         let (core, rom, sav, resume) = (
-            if loaded.platform == Platform::Gba && loaded.player.is_none() {
+            if loaded.player.is_none() {
+                // GB and GBC run on mGBA and share RetroAchievements' GB address space.
+                let layout = if loaded.platform == Platform::Gba {slot_retro::AchievementLayout::Gba} else {slot_retro::AchievementLayout::Gb};
                 match self.app.network.as_ref().and_then(|m|m.service.as_ref()) {
-                    Some(service)=>service.wrap(loaded.opened.core), None=>loaded.opened.core,
+                    Some(service)=>service.wrap(loaded.opened.core, layout), None=>loaded.opened.core,
                 }
             } else {loaded.opened.core},
             loaded.rom,

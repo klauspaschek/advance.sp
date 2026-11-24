@@ -73,8 +73,9 @@ pub(crate) fn selected(root: &Path, rom: &Path, scope: u8) -> bool {
     if scope == crate::ArtworkScope::Library as u8 { return true; }
     if scope != crate::ArtworkScope::FavoritesRecents as u8 { return false; }
     let state = slot_store::read_slot_state(root);
+    let platform = crate::library::platform(rom);
     state.favorites.iter().chain(&state.recents).any(|recent|
-        recent.platform == slot_store::Platform::Gba &&
+        Some(recent.platform) == platform &&
         rom.file_stem().and_then(|s| s.to_str()) == Some(recent.stem.as_str()))
 }
 
@@ -141,7 +142,7 @@ impl Queue {
             let selected = scope == crate::ArtworkScope::Library as u8 ||
                 (scope == crate::ArtworkScope::FavoritesRecents as u8 &&
                     state.favorites.iter().chain(&state.recents).any(|recent|
-                        recent.platform == slot_store::Platform::Gba &&
+                        Some(recent.platform) == crate::library::platform(&rom) &&
                         rom.file_stem().and_then(|s| s.to_str()) == Some(recent.stem.as_str())));
             if !selected { continue; }
             let Some(hash) = entry["hash"].as_str().filter(|hash|
