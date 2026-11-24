@@ -1051,3 +1051,12 @@ Recovered live #221 at 3386b4d5: five workflows passed; launcher native review s
 ### Native Sound disclosure coverage — 2026-11-08
 
 Verified original #222 815f91f1 passes launcher test step including routing regression; native rendering/build still running. Existing automatic accessibility captures do not expose the Bluetooth-only Pair row. Add selected/unselected Pair audio device fixtures to the existing production control_preview compositor walkthrough, automatically rendered at GLES/640 and GL/720. This changes only review coverage, not runtime behavior; git diff --check passes. Local Rust unavailable. Publish this checkpoint and require fresh exact-head six-workflow verification plus inspection of the new native images before reporting visual readiness. #221 remains 3386b4d5, five workflows pass, launcher motion review pending. Merge only #221 after six successes; #222 stays unmerged. Physical handheld checks pending.
+
+
+### GB/GBC achievements — 2026-11-24
+
+Goal (user request): track RetroAchievements for GB and GBC games too, and show the medal instead of the controller icon on the "Game data n/N" progress pill while achievements are prepared. Branch feature/gb-achievements from main a3fb3be7.
+
+Findings before work: `tracked_console` only accepts console 5; the library scan only reads `Games/GBA`; session only wraps GBA cores; the pause-menu entry and browser are GBA-gated. The status-bar sync icon already uses `achievement_badge_face`; only the floating progress pill (`frontend.rs`, `filled_meter_face(..., Some(Icon::Gamepad))`) shows the controller. Pinned mGBA (e31759b2) publishes the RA GB memory map through SET_MEMORY_MAPS: $0000-$FFFF bus pieces, CGB WRAM banks 2-7 at 0x10000, cart RAM banks 1-15 at 0x16000 (matches rcheevos consoleinfo.c for consoles 4/6). The RA gameid endpoint returns 10/11/12×10^8+id for untested/incompatible/patch-required hashes; treat any id ≥ 10^9 as "no achievements for this version" instead of a failing patch request.
+
+Plan: platform-aware snapshot layout (GBA unchanged; GB = flat 0x34000 RA address space with echo RAM mirrored), region starts passed to the C peek validator, consoles 4/5/6 tracked with layout/console match, library scan of GB/GBC folders, session wrap for GB/GBC (not during link play), pause-menu entry and browser for all three platforms, badge scope by platform, medal on the progress pill. Baseline: `cargo test -p slot-achievements` 40 passed, 2 ignored.
