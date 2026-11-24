@@ -83,8 +83,7 @@ Resume, save states, rewind and fast-forward remain available in casual/softcore
 
 Leave the handheld connected while the backend prepares the game library. The status
 shows Preparing / syncing, then Up to date. Unsupported ROM hashes have no rules to
-prepare. RetroAchievements also knows some versions it does not serve achievements for
-(for example untested or incompatible translations); these are cached as having no achievements. Firmware time must be correct for verified HTTPS; use General → Date & Time
+prepare. Firmware time must be correct for verified HTTPS; use General → Date & Time
 if sign-in fails after a cold start. Certificate verification is never disabled.
 
 Prepared games can earn achievements without internet. Unlocks are saved before their

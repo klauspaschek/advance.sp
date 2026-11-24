@@ -302,22 +302,13 @@ struct Active {
     status: &'static str,
 }
 
-/// Real RetroAchievements game IDs are small. The server answers a hash it knows but
-/// cannot serve (untested, incompatible or patch-required versions) with the game ID
-/// plus a multiple of 10^8 at or above 10^9; no patch data exists for those.
-const UNSERVED_GAME_ID: u64 = 1_000_000_000;
-
 /// The cached entry for a ROM without achievements, so it is not looked up again.
-fn without_achievements(id: u64, console: u32) -> Game {
+fn without_achievements(console: u32) -> Game {
     Game {
         presence: String::new(),
         id: 0,
         console,
-        title: if id >= UNSERVED_GAME_ID {
-            "No achievements for this ROM version".into()
-        } else {
-            "No achievements for this ROM".into()
-        },
+        title: "No achievements for this ROM".into(),
         achievements: vec![],
     }
 }
@@ -331,8 +322,8 @@ fn prefetch(
 ) -> Result<Game, Failure> {
     let resolved = call(http, auth, "gameid", &[("m", hash.into())])?;
     let id = resolved["GameID"].as_u64().ok_or(Failure::Invalid)?;
-    let (game, ids) = if id == 0 || id >= UNSERVED_GAME_ID {
-        (without_achievements(id, console), BTreeSet::new())
+    let (game, ids) = if id == 0 {
+        (without_achievements(console), BTreeSet::new())
     } else {
         let patch = call(http, auth, "patch", &[("g", id.to_string())])?;
         let game: Game =
@@ -547,10 +538,10 @@ pub(crate) fn run(
                     if !game.online {
                         let resolved = call(&mut http, auth, "gameid", &[("m", game.hash.clone())])?;
                         let id = resolved["GameID"].as_u64().ok_or(Failure::Invalid)?;
-                        if id == 0 || id >= UNSERVED_GAME_ID {
+                        if id == 0 {
                             game.online = true;
                             game.ready = false;
-                            game.status = if id == 0 { "No achievements" } else { "Version unsupported" };
+                            game.status = "No achievements";
                         } else {
                             let patch = call(&mut http, auth, "patch", &[("g", id.to_string())])?;
                             let data: Game = serde_json::from_value(patch["PatchData"].clone())

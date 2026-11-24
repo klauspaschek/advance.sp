@@ -1068,3 +1068,5 @@ Verified locally: built the pinned mGBA core with cmake from a scratch venv; new
 CI release test set run locally (release.yml lists for slot --no-default-features, slot-ui, plus slot-retro and slot-store): 1947 passed, 0 failed, 4 ignored.
 
 Pending: device test on the RG SP — Super Mario Land (World) (Rev 1) is a supported hash (RA 504); German Kristall and Yoshi EU should prepare as "No achievements for this ROM version" without failing the library.
+
+User steering: no client-side handling of RA's unserved/incompatible game IDs — the server decides and reports unsupported versions itself, and a curated list would need maintaining for a public release. Removed the ≥10^9 special case and its test; placeholders for unknown ROMs keep the shelf's console. Then release via PR → main so the in-app updater can install it on the device.

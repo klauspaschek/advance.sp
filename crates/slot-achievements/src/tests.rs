@@ -1064,32 +1064,3 @@ fn library_includes_gb_and_gbc_shelves() {
     let hint = |folder: &str, file: &str| library::console_hint(&root.path().join("Games").join(folder).join(file));
     assert_eq!([hint("GBA", "a.gba"), hint("GB", "b.gb"), hint("GBC", "c.gbc"), hint("GBC", "d.gb")], [5, 4, 6, 6]);
 }
-
-#[test]
-fn unserved_rom_versions_are_cached_without_requesting_patch_data() {
-    struct Unserved(Server);
-    impl network::Transport for Unserved {
-        fn call(&mut self, fields: &[(&str, String)]) -> Result<Value, network::Failure> {
-            if fields.iter().any(|(key, value)| *key == "r" && value == "gameid") {
-                let _ = self.0.calls.send("gameid".into());
-                // An incompatible version of game 515.
-                return Ok(json!({"Success":true,"GameID":1_100_000_515u64}));
-            }
-            self.0.call(fields)
-        }
-    }
-    let root = configured();
-    std::fs::create_dir_all(root.path().join("Games/GBC")).unwrap();
-    let rom = root.path().join("Games/GBC/Kristall.gbc");
-    std::fs::write(&rom, b"unserved ROM").unwrap();
-    let (calls, requests) = mpsc::channel();
-    let service = Service::start_with(root.path().into(), Unserved(Server { calls }));
-    wait_for(|| service.take_notice().is_some_and(|n| n.title == "Offline achievement cache ready"));
-    wait_for(|| service.sync_status() == SyncStatus::Ready);
-    let dir = Store::open(root.path(), "Player").unwrap().dir;
-    let hash = library::content_hash(&rom).unwrap();
-    let (cached, _): (Game, BTreeSet<u32>) = storage::read(&dir.join(format!("{hash}.json"))).unwrap();
-    assert_eq!((cached.id, cached.console), (0, 6));
-    assert_eq!(cached.title, "No achievements for this ROM version");
-    assert!(!requests.try_iter().any(|r| r == "patch"));
-}
