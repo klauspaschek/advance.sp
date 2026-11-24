@@ -18,17 +18,25 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
 pub use badges::{load_badge, BadgeImage};
-use slot_retro::RetroCore;
+use slot_retro::{AchievementLayout, RetroCore};
 pub use storage::{ArtworkScope, Config};
 use storage::{Store, Unlock};
 
-const RAM_SIZE: usize = 0x58000;
+const RAM_SIZE: usize = AchievementLayout::SNAPSHOT_SIZE;
 const QUEUE_SIZE: usize = 8;
 
-/// RetroAchievements console IDs we track: Genesis, SNES, GB, GBA, GBC, NES,
-/// Sega CD, 32X, Master System, Game Gear.
+/// RetroAchievements console IDs we track: GB (4), GBA (5) and GBC (6).
 pub(crate) fn tracked_console(id: u32) -> bool {
-    id == 5
+    console_layout(id).is_some()
+}
+
+/// The snapshot layout a console's achievement addresses refer to.
+pub(crate) fn console_layout(id: u32) -> Option<AchievementLayout> {
+    match id {
+        4 | 6 => Some(AchievementLayout::Gb),
+        5 => Some(AchievementLayout::Gba),
+        _ => None,
+    }
 }
 
 /// A passive shelf indicator. Reading it never acquires a worker's lock.
@@ -148,6 +156,7 @@ struct Frame {
     generation: u64,
     sequence: u64,
     timeline: u64,
+    layout: AchievementLayout,
     earned_at: u64,
     ram: Vec<u8>,
     valid: [usize; 3],
@@ -280,8 +289,9 @@ impl Service {
         self.flushed.load(Ordering::Acquire)
     }
 
-    pub fn wrap(&self, core: Box<dyn RetroCore>) -> Box<dyn RetroCore> {
-        Box::new(core::Tracked::new(core, self))
+    /// Track a core whose game uses `layout`: GBA, or GB/GBC on the same mGBA core.
+    pub fn wrap(&self, core: Box<dyn RetroCore>, layout: AchievementLayout) -> Box<dyn RetroCore> {
+        Box::new(core::Tracked::new(core, layout, self))
     }
 
     pub fn take_notice(&self) -> Option<Notice> {
@@ -301,6 +311,7 @@ impl Service {
 struct Playing {
     generation: u64,
     hash: String,
+    layout: Option<AchievementLayout>,
     runtime: runtime::Runtime,
     achievements: BTreeMap<u32, storage::Achievement>,
     previous: Option<(u64, u64)>,
@@ -458,6 +469,7 @@ fn run(
                 // Preserve hits for unchanged definitions. Retire removed/unlocked entries
                 // and activate new or revised definitions when online data arrives.
                 game.runtime.activate_presence(&prepared.game.presence);
+                game.layout = console_layout(prepared.game.console);
                 let store = store.lock().unwrap();
                 let mut updated = BTreeMap::new();
                 for achievement in prepared.game.achievements {
@@ -532,6 +544,7 @@ fn run(
             playing = Some(Playing {
                 generation,
                 hash: prepared.hash,
+                layout: console_layout(prepared.game.console),
                 runtime,
                 achievements,
                 previous: None,
@@ -579,7 +592,17 @@ fn evaluate(
             }
         }
         game.previous = Some((frame.sequence, frame.timeline));
-        if frame.valid[0] == 0 || frame.valid[1] == 0 {
+        if game.layout != Some(frame.layout) {
+            // A game's definitions address one system's memory; another layout's bytes
+            // would satisfy conditions by accident.
+            if !game.warned_gap && !game.achievements.is_empty() {
+                let _ = notices.send(Notice::status(
+                    game.generation,
+                    "Achievements are for another system",
+                ));
+                game.warned_gap = true;
+            }
+        } else if !frame.layout.complete(&frame.valid) {
             if !game.warned_gap {
                 let _ = notices.send(Notice::status(
                     game.generation,
@@ -588,7 +611,7 @@ fn evaluate(
                 game.warned_gap = true;
             }
         } else {
-            let earned = game.runtime.frame(&frame.ram, &frame.valid).to_vec();
+            let earned = game.runtime.frame(frame.layout, &frame.ram, &frame.valid).to_vec();
             for id in earned {
                 let unlock = Unlock {
                     id,

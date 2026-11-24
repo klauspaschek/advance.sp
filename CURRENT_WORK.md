@@ -1,10 +1,7 @@
-# No active work
+# Active work
 
-Latest release `build-2026.11.23-d8383a6`: the 75% boot logo redrawn with its scanlines and colour fringe intact (PR #10; WORKLOG section "Boot logo redrawn at 75% — 2026-11-23").
+Branch `feature/gb-achievements`: RetroAchievements for GB/GBC games (mGBA core) and the medal icon on the achievement progress pill. WORKLOG section "GB/GBC achievements — 2026-11-24".
 
-
-advance.sp is renamed throughout (PR #6, `be330d6`), and the regression workflows pass again (PR #8, `5b6de7f`, released as `build-2026.11.23-5b6de7f`). History: WORKLOG.md, sections "HDMI out — 2026-11-22" (rename and release entries at its end) and "CI regression fixes — 2026-11-23".
-
-Verified on the device: redrawn boot logo, file sharing, boot handoff, Updates page layout. No pending device checks.
+Latest release before this work: `build-2026.11.23-d8383a6`.
 
 Known local-only test failures (CI does not run them): e2e `the_whole_pass_from_boot_to_resume`, four layout tests, render_link_screen (2), swap (timing), slot-ui letters (1).

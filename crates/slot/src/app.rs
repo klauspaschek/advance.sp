@@ -1284,7 +1284,7 @@ impl App {
         if self.single_cart() {
             hidden.push(QuickRow::ExitGame);
         }
-        if self.playing_platform() != Platform::Gba || !self.network.as_ref().is_some_and(|m|m.achievements_enabled()) {hidden.push(QuickRow::PlayAchievements);}
+        if !self.network.as_ref().is_some_and(|m|m.achievements_enabled()) {hidden.push(QuickRow::PlayAchievements);}
         if self.playing_platform() != Platform::Gba {
             hidden.extend([QuickRow::GameL, QuickRow::GameR]);
         }

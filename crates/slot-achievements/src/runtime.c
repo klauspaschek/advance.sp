@@ -5,6 +5,7 @@
 
 typedef struct {
     const uint8_t *ram;
+    const size_t *starts;
     const size_t *valid;
     uint32_t *earned;
     size_t capacity, count;
@@ -14,13 +15,11 @@ typedef struct {
 /* The runtime's event/validation callbacks have no userdata argument. */
 static _Thread_local slot_frame *current;
 
+/* Three regions at ascending RetroAchievements addresses; starts[0] is always 0. */
 static int valid_address(uint32_t address) {
-    size_t start;
-    unsigned region;
-    if (address < 0x8000) { start = 0; region = 0; }
-    else if (address < 0x48000) { start = 0x8000; region = 1; }
-    else { start = 0x48000; region = 2; }
-    return address - start < current->valid[region];
+    unsigned region = 2;
+    while (region > 0 && address < current->starts[region]) --region;
+    return address - current->starts[region] < current->valid[region];
 }
 
 static uint32_t peek(uint32_t address, uint32_t bytes, void *unused) {
@@ -41,9 +40,10 @@ static void event(const rc_runtime_event_t *ev) {
         current->earned[current->count++] = ev->id;
 }
 
-size_t slot_ra_frame(rc_runtime_t *runtime, const uint8_t *ram, const size_t *valid,
-                     uint32_t *earned, size_t capacity, char *presence, size_t presence_size) {
-    slot_frame frame = { ram, valid, earned, capacity, 0, 0 };
+size_t slot_ra_frame(rc_runtime_t *runtime, const uint8_t *ram, const size_t *starts,
+                     const size_t *valid, uint32_t *earned, size_t capacity, char *presence,
+                     size_t presence_size) {
+    slot_frame frame = { ram, starts, valid, earned, capacity, 0, 0 };
     current = &frame;
     rc_runtime_validate_addresses(runtime, event, valid_address);
     rc_runtime_do_frame(runtime, event, peek, NULL, NULL);

@@ -806,7 +806,7 @@ impl Menu {
                         service.set_artwork_preferences(self.prefs.achievement_artwork, self.prefs.artwork_scope);
                     }
                     self.say(if !self.prefs.achievement_artwork {"Artwork off · achievements still sync"}
-                        else if self.prefs.artwork_scope == slot_achievements::ArtworkScope::Library {"Downloads badges for every GBA game"}
+                        else if self.prefs.artwork_scope == slot_achievements::ArtworkScope::Library {"Downloads badges for every game"}
                         else {"Badges appear in unlock notifications"});
                     return;
                 }
@@ -935,7 +935,7 @@ impl Menu {
                 rows.push(("Current game".into(), value, false));
             }
             rows.extend([
-                (if d.games_total>0 && d.games_done==d.games_total && d.games_failed==0 {"Games ready"}else{"Game data"}.into(), if !d.catalog_ready {"Reading library…".into()}else if d.games_total==0 {"No GBA games".into()}else{format!("{} / {}", d.games_done, d.games_total)}, false),
+                (if d.games_total>0 && d.games_done==d.games_total && d.games_failed==0 {"Games ready"}else{"Game data"}.into(), if !d.catalog_ready {"Reading library…".into()}else if d.games_total==0 {"No games".into()}else{format!("{} / {}", d.games_done, d.games_total)}, false),
                 ("Artwork".into(), if !d.catalog_ready || !d.artwork_ready {"Reading artwork…".into()}else if d.badges_total==0 {"None queued".into()}else{format!("{} / {}", d.badges_done, d.badges_total)}, false),
                 ("Uploads waiting".into(), d.pending_awards.to_string(), false),
                 ("Games to retry".into(), d.games_failed.to_string(), false),
@@ -1010,12 +1010,13 @@ impl Menu {
         face
     }
     /// The compositor draws this after the card's clip and footer chrome.
-    pub fn floating_progress(&self)->Option<(String,u64,u64)> {
+    /// Label, done, total, and whether it is RetroAchievements work (medal icon).
+    pub fn floating_progress(&self)->Option<(String,u64,u64,bool)> {
         if !self.visible || self.is_keyboard() || self.forget_confirmation.is_some() {return None;}
         if self.page==Page::Achievements && self.service.is_some() {
-            return self.last_sync.progress().map(|(phase,done,total)|(if self.last_sync.retry_seconds>0 {format!("{phase} · retry {}s",self.last_sync.retry_seconds)}else{phase.to_string()},done as u64,total as u64));
+            return self.last_sync.progress().map(|(phase,done,total)|(if self.last_sync.retry_seconds>0 {format!("{phase} · retry {}s",self.last_sync.retry_seconds)}else{phase.to_string()},done as u64,total as u64,true));
         }
-        if self.page==Page::Updates {if let Some(r)=&self.update_installing {return Some(("Downloading".into(),self.update_bytes,r.size));}}
+        if self.page==Page::Updates {if let Some(r)=&self.update_installing {return Some(("Downloading".into(),self.update_bytes,r.size,false));}}
         None
     }
     pub fn set_sharing_allowed(&mut self,allowed:bool) {self.sharing_allowed=allowed;if !allowed {self.sharing.request(None);}}
@@ -1901,12 +1902,13 @@ mod tests {
         assert!(!menu.achievements_enabled());assert!(app.in_game_hidden().contains(&QuickRow::PlayAchievements));
         let mut reloaded=crate::app::App::boot(root.path());assert!(reloaded.in_game_hidden().contains(&QuickRow::PlayAchievements));
         reloaded.network.as_mut().unwrap().prefs.achievements=true;
-        // Unsupported platforms do not offer the pause shortcut even with the toggle on.
+        // GB and GBC games offer the pause shortcut too, and only with the toggle on.
         std::fs::remove_file(root.path().join("Games/GBA/Browser.gba")).unwrap();
         std::fs::write(root.path().join("Games/GB/Browser.gb"),vec![0u8;0x150]).unwrap();
         let mut gb=crate::app::App::boot(root.path());gb.network.as_mut().unwrap().prefs.achievements=true;
         gb.on_core_ready();for _ in 0..120 {gb.update(1.0/60.0);}
-        assert_eq!(gb.playing_platform(),slot_store::Platform::Gb);assert!(gb.in_game_hidden().contains(&QuickRow::PlayAchievements));
+        assert_eq!(gb.playing_platform(),slot_store::Platform::Gb);assert!(!gb.in_game_hidden().contains(&QuickRow::PlayAchievements));
+        gb.network.as_mut().unwrap().prefs.achievements=false;assert!(gb.in_game_hidden().contains(&QuickRow::PlayAchievements));
     }
 
     #[test]
@@ -2090,7 +2092,7 @@ mod tests {
         let root=tempfile::tempdir().unwrap();let mut m=Menu::new(root.path().into());m.open_achievements();
         m.service=Some(slot_achievements::Service::configured(root.path().into(),slot_achievements::Config::default()));
         m.last_sync=slot_achievements::SyncDetail{games_done:6,games_total:900,..Default::default()};
-        assert_eq!(m.floating_progress(),Some(("Game data".into(),6,900)));
+        assert_eq!(m.floating_progress(),Some(("Game data".into(),6,900,true)));
         let face=m.screen_face_on(slot_ui::Canvas::FRAMED,false);
         assert!(face.rgba[(350*face.w*4)as usize..(378*face.w*4)as usize].iter().all(|&v|v==0));
         let mut app=crate::app::App::new(vec![]);app.network=Some(m);app.network_meter_face=Some((slot_ui::TexId::from_raw(60000),400,40));

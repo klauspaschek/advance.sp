@@ -28,7 +28,7 @@ pub use favorite::{draw_star, draw_kid};
 pub use favorite_remove::{draw_favorite_remove, favorite_remove_face, kid_remove_face, FAVORITE_REMOVE_MS};
 mod hud;
 mod meter;
-pub use meter::{filled_meter_face,METER_W,METER_H};
+pub use meter::{achievement_meter_face,filled_meter_face,METER_W,METER_H};
 mod achievement_browser;
 pub use achievement_browser::{achievement_browser_face, achievement_description_lines, achievement_detail_face, draw_achievement_sheet, AchievementRow, ACHIEVEMENT_VISIBLE, ACHIEVEMENT_DETAIL_LINES};
 mod achievement_notice;

@@ -41,7 +41,7 @@ In kid mode, **Settings** opens four tiles: Sound, Screen, Buttons & shortcuts a
 
 ## Status icons and notices
 
-The battery indicator shows the percentage. A lightning bolt inside it means the charger is connected. A slashed speaker means the active output is muted or its volume is zero. Bluetooth and headphones icons show the audio connection. The Wi-Fi icon appears alongside them while connected. A controller marks background RetroAchievements work. Yellow triangle pills warn about short codes. Wi-Fi and RetroAchievements require an encrypted vault and a code of at least six button presses (or a passphrase).
+The battery indicator shows the percentage. A lightning bolt inside it means the charger is connected. A slashed speaker means the active output is muted or its volume is zero. Bluetooth and headphones icons show the audio connection. The Wi-Fi icon appears alongside them while connected. A medal marks background RetroAchievements work. Yellow triangle pills warn about short codes. Wi-Fi and RetroAchievements require an encrypted vault and a code of at least six button presses (or a passphrase).
 
 Connecting a charger briefly shows a charging notice and plays a tone. Short notices also report audio connections, setting changes and errors. An error includes a next step, such as waking the headphones and trying again.
 
