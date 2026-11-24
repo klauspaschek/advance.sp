@@ -1065,4 +1065,6 @@ Implemented: `AchievementLayout` (Gba/Gb) in slot-retro; `RetroCore::achievement
 
 Verified locally: built the pinned mGBA core with cmake from a scratch venv; new `bundled_mgba_exposes_the_retroachievements_gb_address_space` passes against it (valid [0x10000,0x6000,0x6000], ROM at $0000, WRAM write at $C123 and its echo at $E123), GBA memory test still passes (tests now serialize the single libretro core). slot-achievements 45 passed / 2 ignored (5 new: GB runtime banks, GB+GBC earning, cross-system refusal, GB/GBC library scan + console hint, unserved IDs cached without patch). slot --no-default-features network:: 52 passed / 4 ignored incl. updated GB pause-entry test. Rendered the medal pill in both themes and inspected it. Host-feature build needs ALSA/udev headers not installed here; CI-style `--no-default-features` used.
 
-Pending: full CI-style launcher/UI suites (running), device test on the RG SP with Super Mario Land (World) (Rev 1) (RA 504, supported hash).
+CI release test set run locally (release.yml lists for slot --no-default-features, slot-ui, plus slot-retro and slot-store): 1947 passed, 0 failed, 4 ignored.
+
+Pending: device test on the RG SP — Super Mario Land (World) (Rev 1) is a supported hash (RA 504); German Kristall and Yoshi EU should prepare as "No achievements for this ROM version" without failing the library.
