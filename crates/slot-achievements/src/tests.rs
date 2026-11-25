@@ -340,6 +340,26 @@ fn runtime_evaluates_real_definitions_and_never_awards_missing_memory() {
 }
 
 #[test]
+fn an_out_of_range_pointer_read_does_not_hold_back_other_achievements() {
+    // Pokémon Emerald's set follows save-block pointers; some conditions point outside
+    // RetroAchievements memory on every frame. Like rc_client, such a read is 0.
+    let valid = [0x8000, 0x40000, 0x10000];
+    let mut runtime = runtime::Runtime::new().unwrap();
+    assert!(runtime.activate(10, "0xH000010=1"));
+    assert!(runtime.activate(11, "I:0xX000000_0xH000000=1"));
+    assert!(runtime.activate_presence("Display:\nOn route 102"));
+    let mut ram = vec![0; RAM_SIZE];
+    ram[..4].copy_from_slice(&0x7000_0000u32.to_le_bytes());
+    assert!(runtime.frame(AchievementLayout::Gba, &ram, &valid).is_empty());
+    assert_eq!(runtime.presence(), "On route 102");
+    ram[0x10] = 1;
+    assert_eq!(runtime.frame(AchievementLayout::Gba, &ram, &valid), &[10]);
+    ram[..4].copy_from_slice(&0x100u32.to_le_bytes());
+    ram[0x100] = 1;
+    assert_eq!(runtime.frame(AchievementLayout::Gba, &ram, &valid), &[11]);
+}
+
+#[test]
 fn offline_unlock_is_durable_then_syncs_without_reopening_the_game() {
     let root = configured();
     let rom = root.path().join("Games/GBA/Test.gba");
