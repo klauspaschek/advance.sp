@@ -1,22 +1,23 @@
-use std::path::Path;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{mpsc, Arc};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc;
 
 use slot_retro::{AchievementLayout, AvInfo, ButtonMask, CoreError, Link, RetroCore, Rumble};
 
-use crate::{network, Control, Frame, Service, QUEUE_SIZE, RAM_SIZE};
+use crate::{network, Control, Frame, Hub, ServiceLink, QUEUE_SIZE, RAM_SIZE};
 
 static NEXT_GAME: AtomicU64 = AtomicU64::new(1);
 
 pub(crate) struct Tracked {
     core: Box<dyn RetroCore>,
     layout: AchievementLayout,
-    controls: mpsc::Sender<Control>,
-    frames: mpsc::SyncSender<Frame>,
+    hub: Hub,
+    /// The hub epoch `link` was taken at; a different epoch means a service came or went.
+    epoch: u64,
+    link: Option<ServiceLink>,
+    rom: Option<PathBuf>,
     recycled: mpsc::Receiver<Vec<u8>>,
     recycle: mpsc::SyncSender<Vec<u8>>,
-    enabled: Arc<AtomicBool>,
-    current: Arc<AtomicU64>,
     generation: u64,
     sequence: u64,
     timeline: u64,
@@ -25,17 +26,19 @@ pub(crate) struct Tracked {
 }
 
 impl Tracked {
-    pub fn new(core: Box<dyn RetroCore>, layout: AchievementLayout, service: &Service) -> Self {
+    pub fn new(core: Box<dyn RetroCore>, layout: AchievementLayout, hub: Hub) -> Self {
         let (recycle, recycled) = mpsc::sync_channel(QUEUE_SIZE + 1);
+        let epoch = hub.epoch();
+        let link = hub.link();
         Self {
             core,
             layout,
-            controls: service.controls.clone(),
-            frames: service.frames.clone(),
+            hub,
+            epoch,
+            link,
+            rom: None,
             recycled,
             recycle,
-            enabled: service.enabled.clone(),
-            current: service.current.clone(),
             generation: 0,
             sequence: 0,
             timeline: 0,
@@ -44,9 +47,55 @@ impl Tracked {
         }
     }
 
+    /// Tell the attached service about the loaded game under a fresh generation, so its
+    /// evaluator starts from the game's cached or online definitions.
+    fn announce(&mut self) {
+        let (Some(link), Some(rom)) = (&self.link, &self.rom) else {
+            return;
+        };
+        self.generation = NEXT_GAME.fetch_add(1, Ordering::Relaxed);
+        link.current.store(self.generation, Ordering::Release);
+        let _ = link.controls.send(Control::Load(network::Load {
+            generation: self.generation,
+            path: rom.clone(),
+        }));
+    }
+
+    /// Let go of the attached service's game, if it is still ours.
+    fn leave(&mut self) {
+        if let Some(link) = &self.link {
+            let _ = link.controls.send(Control::Unload(self.generation));
+            let _ = link.current.compare_exchange(
+                self.generation,
+                0,
+                Ordering::AcqRel,
+                Ordering::Relaxed,
+            );
+        }
+    }
+
+    /// Follow a service that attached, restarted or stopped while the game runs.
+    fn relink(&mut self) {
+        let epoch = self.hub.epoch();
+        if epoch == self.epoch {
+            return;
+        }
+        self.epoch = epoch;
+        self.leave();
+        self.link = self.hub.link();
+        // Buffers still queued at a stopped worker never come back; start a fresh pool.
+        let (recycle, recycled) = mpsc::sync_channel(QUEUE_SIZE + 1);
+        (self.recycle, self.recycled, self.allocated) = (recycle, recycled, 0);
+        self.timeline += 1;
+        self.announce();
+    }
+
     fn snapshot(&mut self) {
         self.sequence += 1;
-        if !self.enabled.load(Ordering::Acquire) {
+        let Some(link) = &self.link else {
+            return;
+        };
+        if !link.enabled.load(Ordering::Acquire) {
             return;
         }
         let mut ram = match self.recycled.try_recv() {
@@ -74,7 +123,7 @@ impl Tracked {
         };
         // In particular, never use send(): HTTPS, fsync, or evaluation must not backpressure
         // gameplay. Sequence gaps reset the worker's hit/delta state before it proceeds.
-        if let Err(error) = self.frames.try_send(frame) {
+        if let Err(error) = link.frames.try_send(frame) {
             let (mpsc::TrySendError::Full(frame) | mpsc::TrySendError::Disconnected(frame)) = error;
             let _ = self.recycle.try_send(frame.ram);
         }
@@ -91,15 +140,13 @@ impl RetroCore for Tracked {
 
     fn load(&mut self, rom: &Path) -> Result<(), CoreError> {
         self.core.load(rom)?;
-        self.generation = NEXT_GAME.fetch_add(1, Ordering::Relaxed);
-        self.current.store(self.generation, Ordering::Release);
-        let _ = self.controls.send(Control::Load(network::Load {
-            generation: self.generation,
-            path: rom.to_path_buf(),
-        }));
+        self.relink();
+        self.rom = Some(rom.to_path_buf());
+        self.announce();
         Ok(())
     }
     fn run_frame(&mut self, input: ButtonMask) {
+        self.relink();
         self.core.run_frame(input);
         if self.tracking {
             self.snapshot();
@@ -162,9 +209,6 @@ impl RetroCore for Tracked {
 
 impl Drop for Tracked {
     fn drop(&mut self) {
-        let _ = self.controls.send(Control::Unload(self.generation));
-        let _ =
-            self.current
-                .compare_exchange(self.generation, 0, Ordering::AcqRel, Ordering::Relaxed);
+        self.leave();
     }
 }
