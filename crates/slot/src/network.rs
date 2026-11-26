@@ -88,6 +88,9 @@ pub struct Menu {
     last_wifi: wifi::WifiView,
     last_sync: slot_achievements::SyncDetail,
     pub service: Option<slot_achievements::Service>,
+    /// Games attach here, not to `service`: a game resumed at boot starts before the
+    /// credentials unlock, and a service started or restarted later still tracks it.
+    hub: slot_achievements::Hub,
     toast: Option<(String, Instant)>,
     achievement_toast: Option<(u64, String, String, Option<slot_achievements::BadgeImage>)>,
     badge_reply: Option<(u64, std::sync::mpsc::Receiver<Option<slot_achievements::BadgeImage>>)>,
@@ -121,7 +124,7 @@ impl Menu {
             migrating_plain, migration_saving:false, upgrade_pin:false, short_pin:false,
             notice_tone:slot_ui::NoticeTone::Neutral,toast_tone:slot_ui::NoticeTone::Neutral,
             startup_pending: true, return_to_shelf: false,parent_unlock:false,parent_authenticated:false,parent_cancelled:false,pin_rejected:None, notice: String::new(),
-            wifi_on: false, last_wifi: Default::default(), last_sync: Default::default(), service: None, toast: None, achievement_toast:None,badge_reply:None,toast_revision:0,browser_game:None,browser:None,browser_from_pause:false,
+            wifi_on: false, last_wifi: Default::default(), last_sync: Default::default(), service: None, hub: slot_achievements::Hub::new(), toast: None, achievement_toast:None,badge_reply:None,toast_revision:0,browser_game:None,browser:None,browser_from_pause:false,
         }
     }
     pub fn requires_startup_lock(&self)->bool {self.encrypted && self.prefs.lock_device}
@@ -150,6 +153,8 @@ impl Menu {
         self.open_achievements();
     }
     pub fn achievements_enabled(&self)->bool {self.prefs.achievements}
+    /// Where a newly opened game is tracked, whether or not the service has started yet.
+    pub fn achievement_hub(&self)->Option<&slot_achievements::Hub> {self.prefs.achievements.then_some(&self.hub)}
     pub fn open_current_achievements(&mut self, rom: Option<PathBuf>) {
         self.open_achievements_for(rom);
         self.browser_from_pause=true;
@@ -385,9 +390,9 @@ impl Menu {
     fn start_tracking(&mut self) {
         self.service = None; self.last_sync = Default::default();
         if self.credentials_ready() && self.prefs.achievements && !self.secrets.username.is_empty() {
-            self.service = Some(slot_achievements::Service::configured(self.root.clone(), slot_achievements::Config {
+            self.service = Some(slot_achievements::Service::attached(self.root.clone(), slot_achievements::Config {
                 enabled: true, artwork:self.prefs.achievement_artwork, artwork_scope:self.prefs.artwork_scope, username: self.secrets.username.clone(), password: self.secrets.password.clone(), token: self.secrets.token.clone(),
-            }));
+            }, &self.hub));
         }
     }
     pub fn suspend_for_link(&mut self) {

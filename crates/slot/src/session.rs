@@ -811,8 +811,8 @@ impl Session {
             if loaded.player.is_none() {
                 // GB and GBC run on mGBA and share RetroAchievements' GB address space.
                 let layout = if loaded.platform == Platform::Gba {slot_retro::AchievementLayout::Gba} else {slot_retro::AchievementLayout::Gb};
-                match self.app.network.as_ref().and_then(|m|m.service.as_ref()) {
-                    Some(service)=>service.wrap(loaded.opened.core, layout), None=>loaded.opened.core,
+                match self.app.network.as_ref().and_then(|m|m.achievement_hub()) {
+                    Some(hub)=>hub.wrap(loaded.opened.core, layout), None=>loaded.opened.core,
                 }
             } else {loaded.opened.core},
             loaded.rom,

@@ -163,20 +163,77 @@ struct Frame {
     recycle: mpsc::SyncSender<Vec<u8>>,
 }
 
+/// Where a running game finds the achievements service. The launcher keeps one hub for
+/// its whole run: a game opened before the service exists (resumed at boot while the
+/// credentials are still being unlocked) is tracked as soon as a service attaches, and a
+/// restarted service picks the running game up again.
+#[derive(Clone, Default)]
+pub struct Hub(Arc<HubState>);
+
+#[derive(Default)]
+struct HubState {
+    link: Mutex<Option<ServiceLink>>,
+    epoch: AtomicU64,
+}
+
+/// The parts of a service a tracked game talks to.
+#[derive(Clone)]
+pub(crate) struct ServiceLink {
+    controls: mpsc::Sender<Control>,
+    frames: mpsc::SyncSender<Frame>,
+    enabled: Arc<AtomicBool>,
+    current: Arc<AtomicU64>,
+}
+
+impl Hub {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Track a core whose game uses `layout`: GBA, or GB/GBC on the same mGBA core. The
+    /// core runs untracked while no service is attached.
+    pub fn wrap(&self, core: Box<dyn RetroCore>, layout: AchievementLayout) -> Box<dyn RetroCore> {
+        Box::new(core::Tracked::new(core, layout, self.clone()))
+    }
+
+    /// Changes whenever a service attaches or detaches; cheap to poll every frame.
+    pub(crate) fn epoch(&self) -> u64 {
+        self.0.epoch.load(Ordering::Acquire)
+    }
+
+    pub(crate) fn link(&self) -> Option<ServiceLink> {
+        self.0.link.lock().unwrap().clone()
+    }
+
+    fn attach(&self, link: ServiceLink) {
+        *self.0.link.lock().unwrap() = Some(link);
+        self.0.epoch.fetch_add(1, Ordering::AcqRel);
+    }
+
+    fn detach(&self, enabled: &Arc<AtomicBool>) {
+        let mut link = self.0.link.lock().unwrap();
+        if link.as_ref().is_some_and(|l| Arc::ptr_eq(&l.enabled, enabled)) {
+            *link = None;
+            self.0.epoch.fetch_add(1, Ordering::AcqRel);
+        }
+    }
+}
+
 /// Outlives games, so pending unlocks sync while the player is on the shelf, too.
 pub struct Service {
     controls: mpsc::Sender<Control>,
-    frames: mpsc::SyncSender<Frame>,
     notices: mpsc::Receiver<Notice>,
     enabled: Arc<AtomicBool>,
     current: Arc<AtomicU64>,
     flushing: AtomicBool,
     flushed: Arc<AtomicBool>,
     status: Arc<Status>,
+    hub: Hub,
 }
 
 impl Drop for Service {
     fn drop(&mut self) {
+        self.hub.detach(&self.enabled);
         self.enabled.store(false, Ordering::Release);
         self.status.stopped.store(true, Ordering::Release);
         self.status.auth.lock().unwrap().take();
@@ -186,7 +243,13 @@ impl Drop for Service {
 impl Service {
     /// Credentials are supplied in memory. No production API reads credential files.
     pub fn configured(root: PathBuf, config: Config) -> Self {
-        Self::spawn(root, network::Http::new(), Some(config))
+        Self::attached(root, config, &Hub::new())
+    }
+
+    /// Like `configured`, and games wrapped by `hub` (even ones already running) are
+    /// tracked by this service until it is dropped.
+    pub fn attached(root: PathBuf, config: Config, hub: &Hub) -> Self {
+        Self::spawn(root, network::Http::new(), Some(config), hub.clone())
     }
     pub fn take_token(&self) -> Option<(String, String)> {
         self.status.auth.lock().unwrap().take()
@@ -199,12 +262,21 @@ impl Service {
 
     #[cfg(test)]
     fn start_with(root: PathBuf, transport: impl network::Transport + Send + 'static) -> Self {
-        Self::spawn(root, transport, None)
+        Self::spawn(root, transport, None, Hub::new())
+    }
+    #[cfg(test)]
+    fn start_on(
+        root: PathBuf,
+        transport: impl network::Transport + Send + 'static,
+        hub: &Hub,
+    ) -> Self {
+        Self::spawn(root, transport, None, hub.clone())
     }
     fn spawn(
         root: PathBuf,
         transport: impl network::Transport + Send + 'static,
         config: Option<Config>,
+        hub: Hub,
     ) -> Self {
         let (controls, control_rx) = mpsc::channel();
         let (frames, frame_rx) = mpsc::sync_channel(QUEUE_SIZE);
@@ -237,15 +309,21 @@ impl Service {
             flushed.store(true, Ordering::Release);
             eprintln!("advance: achievements worker could not start");
         }
+        hub.attach(ServiceLink {
+            controls: controls.clone(),
+            frames,
+            enabled: enabled.clone(),
+            current: current.clone(),
+        });
         Self {
             controls,
-            frames,
             notices,
             enabled,
             current,
             flushing: AtomicBool::new(false),
             flushed,
             status,
+            hub,
         }
     }
 
@@ -291,7 +369,7 @@ impl Service {
 
     /// Track a core whose game uses `layout`: GBA, or GB/GBC on the same mGBA core.
     pub fn wrap(&self, core: Box<dyn RetroCore>, layout: AchievementLayout) -> Box<dyn RetroCore> {
-        Box::new(core::Tracked::new(core, layout, self))
+        self.hub.wrap(core, layout)
     }
 
     pub fn take_notice(&self) -> Option<Notice> {

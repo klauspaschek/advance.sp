@@ -359,6 +359,69 @@ fn an_out_of_range_pointer_read_does_not_hold_back_other_achievements() {
     assert_eq!(runtime.frame(AchievementLayout::Gba, &ram, &valid), &[11]);
 }
 
+/// A configured account root whose cache already holds `game()` for `rom`.
+fn cached_root(rom: &Path) -> tempfile::TempDir {
+    let root = configured();
+    let store = Store::open(root.path(), "Player").unwrap();
+    let hash = library::hash(&store.dir, rom).unwrap();
+    storage::write(
+        &store.dir.join(format!("{hash}.json")),
+        &(game(), std::collections::BTreeSet::<u32>::new()),
+    )
+    .unwrap();
+    root
+}
+
+#[test]
+fn a_game_opened_before_the_service_starts_is_tracked_once_it_does() {
+    // At boot the launcher resumes the last game before the credentials are unlocked, so
+    // the game is opened while no service exists yet.
+    let games = tempfile::tempdir().unwrap();
+    let rom = games.path().join("Test.gba");
+    std::fs::write(&rom, b"fixture ROM").unwrap();
+    let hub = Hub::new();
+    let mut core = hub.wrap(Box::<TestCore>::default(), AchievementLayout::Gba);
+    core.load(&rom).unwrap();
+    core.run_frame(ButtonMask(1));
+
+    let root = cached_root(&rom);
+    let service = Service::start_on(root.path().into(), Offline, &hub);
+    core.run_frame(ButtonMask(0));
+    wait_for(|| {
+        service
+            .take_notice()
+            .is_some_and(|n| n.title.starts_with("Achievements ready"))
+    });
+    core.run_frame(ButtonMask(0));
+    core.run_frame(ButtonMask(1));
+    wait_for(|| {
+        service
+            .take_notice()
+            .is_some_and(|n| n.kind == NoticeKind::Earned)
+    });
+    assert!(Store::open(root.path(), "Player").unwrap().unlocks.contains_key(&7));
+
+    // A service started again (sign-in, settings) keeps tracking the running game.
+    drop(service);
+    core.run_frame(ButtonMask(0));
+    let again = cached_root(&rom);
+    let restarted = Service::start_on(again.path().into(), Offline, &hub);
+    core.run_frame(ButtonMask(0));
+    wait_for(|| {
+        restarted
+            .take_notice()
+            .is_some_and(|n| n.title.starts_with("Achievements ready"))
+    });
+    core.run_frame(ButtonMask(0));
+    core.run_frame(ButtonMask(1));
+    wait_for(|| {
+        restarted
+            .take_notice()
+            .is_some_and(|n| n.kind == NoticeKind::Earned)
+    });
+    assert!(Store::open(again.path(), "Player").unwrap().unlocks.contains_key(&7));
+}
+
 #[test]
 fn offline_unlock_is_durable_then_syncs_without_reopening_the_game() {
     let root = configured();
@@ -492,18 +555,14 @@ fn an_unopened_library_is_prepared_automatically_without_starting_sessions() {
 fn a_full_worker_queue_cannot_block_the_emulator() {
     let (controls, _controls_rx) = mpsc::channel();
     let (frames, _frames_rx) = mpsc::sync_channel(QUEUE_SIZE);
-    let (_, notices) = mpsc::channel();
-    let service = Service {
+    let hub = Hub::new();
+    hub.attach(ServiceLink {
         controls,
         frames,
-        notices,
         enabled: Arc::new(AtomicBool::new(true)),
         current: Arc::new(AtomicU64::new(1)),
-        flushing: AtomicBool::new(false),
-        flushed: Arc::new(AtomicBool::new(false)),
-        status: Arc::new(Status::default()),
-    };
-    let mut core = service.wrap(Box::<TestCore>::default(), AchievementLayout::Gba);
+    });
+    let mut core = hub.wrap(Box::<TestCore>::default(), AchievementLayout::Gba);
     let (done, completed) = mpsc::channel();
     let worker = std::thread::spawn(move || {
         for _ in 0..1000 {
@@ -833,6 +892,7 @@ fn ram_credentials_prepare_games_without_creating_plaintext_account_files() {
             password: "fixture-password".into(),
             token: String::new(),
         }),
+        Hub::new(),
     );
     wait_for(|| service.sync_status() == SyncStatus::Ready);
     let token = service
